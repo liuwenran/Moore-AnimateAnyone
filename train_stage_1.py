@@ -28,8 +28,10 @@ from omegaconf import OmegaConf
 from PIL import Image
 from tqdm.auto import tqdm
 from transformers import CLIPVisionModelWithProjection
+from safetensors.torch import load_file
 
 from src.dataset.dance_image import HumanDanceDataset
+from src.dataset.animation_image import AnimationDataset, Pexels
 from src.dwpose import DWposeDetector
 from src.models.mutual_self_attention import ReferenceAttentionControl
 from src.models.pose_guider import PoseGuider
@@ -145,8 +147,8 @@ def log_validation(
     vae = vae.to(dtype=torch.float32)
     image_enc = image_enc.to(dtype=torch.float32)
 
-    pose_detector = DWposeDetector()
-    pose_detector.to(accelerator.device)
+    # pose_detector = DWposeDetector()
+    # pose_detector.to(accelerator.device)
 
     pipe = Pose2ImagePipeline(
         vae=vae,
@@ -159,12 +161,17 @@ def log_validation(
     pipe = pipe.to(accelerator.device)
 
     ref_image_paths = [
-        "./configs/inference/ref_images/anyone-2.png",
-        "./configs/inference/ref_images/anyone-3.png",
+        # "./configs/inference/ref_images/anyone-2.png",
+        # "./configs/inference/ref_images/anyone-3.png",
+        './configs/inference/ref_images/pexels_ref_1.png',
+        './configs/inference/ref_images/pexels_ref_2.png',
     ]
     pose_image_paths = [
-        "./configs/inference/pose_images/pose-1.png",
-        "./configs/inference/pose_images/pose-1.png",
+        # "./configs/inference/pose_images/pose-1.png",
+        # "./configs/inference/pose_images/pose-1.png",
+        './configs/inference/hed_images/pexels_contol_1.png',
+        './configs/inference/hed_images/pexels_contol_2.png',
+
     ]
 
     pil_images = []
@@ -277,7 +284,8 @@ def main(cfg):
     ).to(device="cuda")
 
     image_enc = CLIPVisionModelWithProjection.from_pretrained(
-        cfg.image_encoder_path,
+        cfg.base_model_path,
+        subfolder="image_encoder",
     ).to(dtype=weight_dtype, device="cuda")
 
     if cfg.pose_guider_pretrain:
@@ -285,7 +293,8 @@ def main(cfg):
             conditioning_embedding_channels=320, block_out_channels=(16, 32, 96, 256)
         ).to(device="cuda")
         # load pretrained controlnet-openpose params for pose_guider
-        controlnet_openpose_state_dict = torch.load(cfg.controlnet_openpose_path)
+        controlnet_openpose_state_dict = load_file(cfg.controlnet_hed_path)
+        # controlnet_openpose_state_dict = torch.load(cfg.controlnet_openpose_path)
         state_dict_to_load = {}
         for k in controlnet_openpose_state_dict.keys():
             if k.startswith("controlnet_cond_embedding.") and k.find("conv_out") < 0:
@@ -333,6 +342,10 @@ def main(cfg):
         reference_control_writer,
         reference_control_reader,
     )
+
+    if config.pretrained_weight:
+        trained_net_state_dict = load_file(config.pretrained_weight)
+        net.load_state_dict(trained_net_state_dict)
 
     if cfg.solver.enable_xformers_memory_efficient_attention:
         if is_xformers_available():
@@ -389,12 +402,14 @@ def main(cfg):
         * cfg.solver.gradient_accumulation_steps,
     )
 
-    train_dataset = HumanDanceDataset(
-        img_size=(cfg.data.train_width, cfg.data.train_height),
-        img_scale=(0.9, 1.0),
-        data_meta_paths=cfg.data.meta_paths,
-        sample_margin=cfg.data.sample_margin,
-    )
+    # train_dataset = HumanDanceDataset(
+    #     img_size=(cfg.data.train_width, cfg.data.train_height),
+    #     img_scale=(0.9, 1.0),
+    #     data_meta_paths=cfg.data.meta_paths,
+    #     sample_margin=cfg.data.sample_margin,
+    # )
+    train_dataset = AnimationDataset(args=cfg.data, images_file=cfg.data.images_file, img_size=(cfg.data.train_height, cfg.data.train_width), control_type=cfg.data.control_type)
+
     train_dataloader = torch.utils.data.DataLoader(
         train_dataset, batch_size=cfg.data.train_bs, shuffle=True, num_workers=4
     )
@@ -619,7 +634,7 @@ def main(cfg):
                         delete_additional_ckpt(save_dir, 1)
                         accelerator.save_state(save_path)
 
-                if global_step % cfg.val.validation_steps == 0:
+                if global_step == 1 or global_step % cfg.val.validation_steps == 0:
                     if accelerator.is_main_process:
                         generator = torch.Generator(device=accelerator.device)
                         generator.manual_seed(cfg.seed)

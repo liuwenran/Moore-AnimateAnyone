@@ -4,6 +4,7 @@ output/
 .venv/
 mlruns/
 data/
+exp_output/
 
 *.pth
 *.pt

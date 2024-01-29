@@ -4,8 +4,10 @@ data:
   train_height: 768 
   meta_paths:
     - "./data/fashion_meta.json"
+  images_file: /mnt/petrelfs/share_data/liuwenran/pexels_dataset/pexels_frames_train_info/all_images_sort.txt
   # Margin of frame indexes between ref and tgt images
-  sample_margin: 30  
+  sample_margin: 30
+  control_type: hed
 
 solver:
   gradient_accumulation_steps: 1
@@ -43,6 +45,7 @@ base_model_path: '/mnt/petrelfs/liuwenran/.cache/huggingface/hub/models--lambdal
 vae_model_path: './pretrained_weights/sd-vae-ft-mse'
 image_encoder_path: '/mnt/petrelfs/liuwenran/.cache/huggingface/hub/models--lambdalabs--sd-image-variations-diffusers/snapshots/42bc0ee1726b141d49f519a6ea02ccfbf073db2e/image_encoder'
 controlnet_openpose_path: '/mnt/petrelfs/liuwenran/.cache/huggingface/hub/models--lllyasviel--control_v11p_sd15_openpose/snapshots/9ae9f970358db89e211b87c915f9535c6686d5ba/diffusion_pytorch_model.safetensors'
+controlnet_hed_path: '/mnt/petrelfs/liuwenran/.cache/huggingface/hub/models--lllyasviel--control_v11p_sd15_softedge/snapshots/b5bcad0c48e9b12f091968cf5eadbb89402d6bc9/diffusion_pytorch_model.safetensors'
 
 weight_dtype: 'fp16'  # [fp16, fp32]
 uncond_ratio: 0.1
