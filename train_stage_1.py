@@ -31,7 +31,7 @@ from transformers import CLIPVisionModelWithProjection
 from safetensors.torch import load_file
 
 from src.dataset.dance_image import HumanDanceDataset
-from src.dataset.animation_image import AnimationDataset, Pexels
+from src.dataset.animation_image import AnimationDataset
 from src.dwpose import DWposeDetector
 from src.models.mutual_self_attention import ReferenceAttentionControl
 from src.models.pose_guider import PoseGuider
@@ -127,6 +127,7 @@ def compute_snr(noise_scheduler, timesteps):
 
 
 def log_validation(
+    args,
     vae,
     image_enc,
     net,
@@ -142,7 +143,7 @@ def log_validation(
     denoising_unet = ori_net.denoising_unet
     pose_guider = ori_net.pose_guider
 
-    generator = torch.manual_seed(42)
+    generator = torch.Generator(device=accelerator.device).manual_seed(42)
     # cast unet dtype
     vae = vae.to(dtype=torch.float32)
     image_enc = image_enc.to(dtype=torch.float32)
@@ -160,49 +161,48 @@ def log_validation(
     )
     pipe = pipe.to(accelerator.device)
 
-    ref_image_paths = [
-        # "./configs/inference/ref_images/anyone-2.png",
-        # "./configs/inference/ref_images/anyone-3.png",
-        './configs/inference/ref_images/pexels_ref_1.png',
-        './configs/inference/ref_images/pexels_ref_2.png',
-    ]
-    pose_image_paths = [
-        # "./configs/inference/pose_images/pose-1.png",
-        # "./configs/inference/pose_images/pose-1.png",
-        './configs/inference/hed_images/pexels_contol_1.png',
-        './configs/inference/hed_images/pexels_contol_2.png',
+    ref_image_paths = open(args.validation_ref_images, 'r').readlines()
+    tgt_image_paths = open(args.validation_tgt_images, 'r').readlines()
 
-    ]
+    from controlnet_aux.hed import Network
+    from controlnet_aux import HEDdetector
+    hed_net = Network('/mnt/petrelfs/liuwenran/.cache/huggingface/hub/models--lllyasviel--Annotators/snapshots/982e7edaec38759d914a963c48c4726685de7d96/network-bsds500.pth')
+    hed_detector = HEDdetector(hed_net)
 
     pil_images = []
-    for ref_image_path in ref_image_paths:
-        for pose_image_path in pose_image_paths:
-            pose_name = pose_image_path.split("/")[-1].replace(".png", "")
-            ref_name = ref_image_path.split("/")[-1].replace(".png", "")
-            ref_image_pil = Image.open(ref_image_path).convert("RGB")
-            pose_image_pil = Image.open(pose_image_path).convert("RGB")
+    for ind in range(len(ref_image_paths)):
+        ref_image_path = ref_image_paths[ind].strip()
+        tgt_image_path = tgt_image_paths[ind].strip()
 
-            image = pipe(
-                ref_image_pil,
-                pose_image_pil,
-                width,
-                height,
-                20,
-                3.5,
-                generator=generator,
-            ).images
-            image = image[0, :, 0].permute(1, 2, 0).cpu().numpy()  # (3, 512, 512)
-            res_image_pil = Image.fromarray((image * 255).astype(np.uint8))
-            # Save ref_image, src_image and the generated_image
-            w, h = res_image_pil.size
-            canvas = Image.new("RGB", (w * 3, h), "white")
-            ref_image_pil = ref_image_pil.resize((w, h))
-            pose_image_pil = pose_image_pil.resize((w, h))
-            canvas.paste(ref_image_pil, (0, 0))
-            canvas.paste(pose_image_pil, (w, 0))
-            canvas.paste(res_image_pil, (w * 2, 0))
+        ref_name = ref_image_path.split("/")[-1].replace(".png", "")
+        tgt_name = tgt_image_path.split("/")[-1].replace(".png", "")
+        ref_image_pil = Image.open(ref_image_path).convert("RGB")
+        tgt_image_pil = Image.open(tgt_image_path).convert("RGB")
+        
+        control_image = hed_detector(tgt_image_pil)
+        control_image = control_image.resize((width, height))
 
-            pil_images.append({"name": f"{ref_name}_{pose_name}", "img": canvas})
+        image = pipe(
+            ref_image_pil,
+            control_image,
+            width,
+            height,
+            20,
+            3.5,
+            generator=generator,
+        ).images
+        image = image[0, :, 0].permute(1, 2, 0).cpu().numpy()  # (3, 512, 512)
+        res_image_pil = Image.fromarray((image * 255).astype(np.uint8))
+        # Save ref_image, src_image and the generated_image
+        w, h = res_image_pil.size
+        canvas = Image.new("RGB", (w * 3, h), "white")
+        ref_image_pil = ref_image_pil.resize((w, h))
+        control_image = control_image.resize((w, h))
+        canvas.paste(ref_image_pil, (0, 0))
+        canvas.paste(control_image, (w, 0))
+        canvas.paste(res_image_pil, (w * 2, 0))
+
+        pil_images.append({"name": f"{ref_name}_{tgt_name}", "img": canvas})
 
     vae = vae.to(dtype=torch.float16)
     image_enc = image_enc.to(dtype=torch.float16)
@@ -640,6 +640,7 @@ def main(cfg):
                         generator.manual_seed(cfg.seed)
 
                         sample_dicts = log_validation(
+                            args=config.val,
                             vae=vae,
                             image_enc=image_enc,
                             net=net,
@@ -654,7 +655,7 @@ def main(cfg):
                             img = sample_dict["img"]
                             with TemporaryDirectory() as temp_dir:
                                 out_file = Path(
-                                    f"{temp_dir}/{global_step:06d}-{sample_name}.gif"
+                                    f"{temp_dir}/{global_step:06d}-{sample_name}.png"
                                 )
                                 img.save(out_file)
                                 mlflow.log_artifact(out_file)

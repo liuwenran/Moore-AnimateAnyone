@@ -61,6 +61,8 @@ class UNet3DConditionModel(ModelMixin, ConfigMixin):
         norm_num_groups: int = 32,
         norm_eps: float = 1e-5,
         cross_attention_dim: int = 1280,
+        transformer_layers_per_block: Union[int, Tuple[int], Tuple[Tuple]] = 1,
+        reverse_transformer_layers_per_block: Optional[Tuple[Tuple[int]]] = None,
         attention_head_dim: Union[int, Tuple[int]] = 8,
         dual_cross_attention: bool = False,
         use_linear_projection: bool = False,
@@ -83,6 +85,11 @@ class UNet3DConditionModel(ModelMixin, ConfigMixin):
 
         self.sample_size = sample_size
         time_embed_dim = block_out_channels[0] * 4
+
+        if isinstance(transformer_layers_per_block, list) and reverse_transformer_layers_per_block is None:
+            for layer_number_per_block in transformer_layers_per_block:
+                if isinstance(layer_number_per_block, list):
+                    raise ValueError("Must provide 'reverse_transformer_layers_per_block` if using asymmetrical UNet.")
 
         # input
         self.conv_in = InflatedConv3d(
@@ -115,6 +122,9 @@ class UNet3DConditionModel(ModelMixin, ConfigMixin):
         if isinstance(attention_head_dim, int):
             attention_head_dim = (attention_head_dim,) * len(down_block_types)
 
+        if isinstance(transformer_layers_per_block, int):
+            transformer_layers_per_block = [transformer_layers_per_block] * len(down_block_types)
+
         # down
         output_channel = block_out_channels[0]
         for i, down_block_type in enumerate(down_block_types):
@@ -126,6 +136,7 @@ class UNet3DConditionModel(ModelMixin, ConfigMixin):
             down_block = get_down_block(
                 down_block_type,
                 num_layers=layers_per_block,
+                transformer_layers_per_block=transformer_layers_per_block[i],
                 in_channels=input_channel,
                 out_channels=output_channel,
                 temb_channels=time_embed_dim,
@@ -155,6 +166,7 @@ class UNet3DConditionModel(ModelMixin, ConfigMixin):
         # mid
         if mid_block_type == "UNetMidBlock3DCrossAttn":
             self.mid_block = UNetMidBlock3DCrossAttn(
+                transformer_layers_per_block=transformer_layers_per_block[-1],
                 in_channels=block_out_channels[-1],
                 temb_channels=time_embed_dim,
                 resnet_eps=norm_eps,
@@ -184,6 +196,11 @@ class UNet3DConditionModel(ModelMixin, ConfigMixin):
         reversed_block_out_channels = list(reversed(block_out_channels))
         reversed_attention_head_dim = list(reversed(attention_head_dim))
         only_cross_attention = list(reversed(only_cross_attention))
+        reversed_transformer_layers_per_block = (
+            list(reversed(transformer_layers_per_block))
+            if reverse_transformer_layers_per_block is None
+            else reverse_transformer_layers_per_block
+        )
         output_channel = reversed_block_out_channels[0]
         for i, up_block_type in enumerate(up_block_types):
             res = 2 ** (3 - i)
@@ -205,6 +222,7 @@ class UNet3DConditionModel(ModelMixin, ConfigMixin):
             up_block = get_up_block(
                 up_block_type,
                 num_layers=layers_per_block + 1,
+                transformer_layers_per_block=reversed_transformer_layers_per_block[i],
                 in_channels=input_channel,
                 out_channels=output_channel,
                 prev_output_channel=prev_output_channel,
@@ -597,18 +615,8 @@ class UNet3DConditionModel(ModelMixin, ConfigMixin):
 
         unet_config = cls.load_config(config_file)
         unet_config["_class_name"] = cls.__name__
-        unet_config["down_block_types"] = [
-            "CrossAttnDownBlock3D",
-            "CrossAttnDownBlock3D",
-            "CrossAttnDownBlock3D",
-            "DownBlock3D",
-        ]
-        unet_config["up_block_types"] = [
-            "UpBlock3D",
-            "CrossAttnUpBlock3D",
-            "CrossAttnUpBlock3D",
-            "CrossAttnUpBlock3D",
-        ]
+        unet_config["down_block_types"] = [block_name.replace('2D', '3D') for block_name in unet_config["down_block_types"]]
+        unet_config["up_block_types"] = [block_name.replace('2D', '3D') for block_name in unet_config["up_block_types"]]
         unet_config["mid_block_type"] = "UNetMidBlock3DCrossAttn"
 
         model = cls.from_config(unet_config, **unet_additional_kwargs)

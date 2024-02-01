@@ -30,6 +30,8 @@ class AnimationDataset(Dataset):
                  drop_ratio=0.1):
         super().__init__()
         self.args = args
+        self.sample_margin = args.sample_margin
+        self.margin_strategy = args.margin_strategy
         data = open(images_file).readlines()
         self.data = self.construct_data(data)
         print(f'Dataset size: {len(self.data)}')
@@ -99,8 +101,27 @@ class AnimationDataset(Dataset):
                 frame_extension = os.path.splitext(frame)[1]
                 if frame_extension in IMAGE_EXTENSIONS:
                     all_images.append(frame)
+            
+            video_length = len(all_images)
+            tgt_image_ind = int(image_file.split('/')[-1].split('.')[0])
 
-            reference_image_ind = random.randint(0, len(all_images) - 1)
+            if self.margin_strategy == 'close':
+                reference_image_ind = random.randint(-10, 10) + tgt_image_ind
+                if reference_image_ind < 0:
+                    reference_image_ind = 0
+                if reference_image_ind > video_length - 1:
+                    reference_image_ind = video_length - 1
+            elif self.margin_strategy == 'far':
+                if tgt_image_ind + self.sample_margin < video_length:
+                    reference_image_ind = random.randint(tgt_image_ind + self.sample_margin, video_length - 1)
+                elif tgt_image_ind - self.sample_margin > 0:
+                    reference_image_ind = random.randint(0, tgt_image_ind - self.sample_margin)
+                else:
+                    reference_image_ind = random.randint(0, video_length - 1)
+            else:
+                import sys
+                sys.exit()
+
             reference_image = Image.open(all_images[reference_image_ind]).convert("RGB")
 
             control_image = None
@@ -117,7 +138,6 @@ class AnimationDataset(Dataset):
                 control_image_path = image_file.replace(self.args.image_dir_key, self.args.pose_dir_key)
                 control_image_path = control_image_path.replace('png', 'jpg')
                 control_image = Image.open(control_image_path).convert("RGB")
-
 
         except Exception:
             return self.__getitem__((idx + 1) % len(self.data))
@@ -147,66 +167,3 @@ class AnimationDataset(Dataset):
         if state is not None:
             torch.set_rng_state(state)
         return transform(image)
-
-
-class Pexels(AnimationDataset):
-    def __getitem__(self, idx):
-        try:
-            item = self.data[idx]
-            image_file = item["img_path"]
-            tgt_image = Image.open(image_file).convert("RGB")
-            image_base_path = os.path.dirname(image_file)
-
-            frame_files = os.listdir(image_base_path)
-            frame_files = [os.path.join(image_base_path, f) for f in frame_files]
-            frame_files.sort()
-            IMAGE_EXTENSIONS = ('.jpg', '.jpeg', '.png', '.JPG', '.JPEG', '.PNG')
-            all_images = []
-            for frame in frame_files:
-                frame_extension = os.path.splitext(frame)[1]
-                if frame_extension in IMAGE_EXTENSIONS:
-                    all_images.append(frame)
-            
-            tgt_image_ind = int(image_file.split('/')[-1].split('.')[0])
-            reference_image_ind = random.randint(-10, 10) + tgt_image_ind
-            if reference_image_ind < 0:
-                reference_image_ind = 0
-            if reference_image_ind > len(all_images) - 1:
-                reference_image_ind = len(all_images) - 1
-            reference_image = Image.open(all_images[reference_image_ind]).convert("RGB")
-
-            control_image = None
-            if self.control_type == 'canny':
-                control_image = np.array(tgt_image)
-                control_image = cv2.Canny(control_image, 100, 200)
-                control_image = control_image[:, :, None]
-                control_image = np.concatenate([control_image, control_image, control_image], axis=2)
-                control_image = Image.fromarray(control_image)
-            elif self.control_type == 'hed':
-                control_image = self.hed(tgt_image)
-                control_image = control_image.resize(tgt_image.size)
-            elif self.control_type == 'pose':
-                control_image_path = image_file.replace(self.args.image_dir_key, self.args.pose_dir_key)
-                control_image_path = control_image_path.replace('png', 'jpg')
-                control_image = Image.open(control_image_path).convert("RGB")
-
-        except Exception:
-            return self.__getitem__((idx + 1) % len(self.data))
-
-        state = torch.get_rng_state()
-        tgt_img = self.augmentation(tgt_image, self.transform, state)
-        tgt_pose_img = self.augmentation(control_image, self.cond_transform, state)
-        ref_img_vae = self.augmentation(reference_image, self.transform, state)
-        clip_image = self.clip_image_processor(
-            images=reference_image, return_tensors="pt"
-        ).pixel_values[0]
-
-        sample = dict(
-            video_dir=image_base_path,
-            img=tgt_img,
-            tgt_pose=tgt_pose_img,
-            ref_img=ref_img_vae,
-            clip_images=clip_image,
-        )
-
-        return sample

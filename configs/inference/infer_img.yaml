@@ -31,7 +31,7 @@ noise_scheduler_kwargs:
 
 sampler: DDIM 
 
-validate_image_file: /mnt/petrelfs/liuwenran/forks/Moore-AnimateAnyone/configs/inference/inference_nantong.txt
-validate_control_image_file: /mnt/petrelfs/liuwenran/forks/Moore-AnimateAnyone/configs/inference/inference_nantong_part_two.txt
+validate_image_file: /mnt/petrelfs/liuwenran/forks/Moore-AnimateAnyone/data/inference_nantong.txt
+validate_control_image_file: /mnt/petrelfs/liuwenran/forks/Moore-AnimateAnyone/data/inference_nantong_part_two.txt
 
 
