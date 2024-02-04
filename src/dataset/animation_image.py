@@ -106,7 +106,7 @@ class AnimationDataset(Dataset):
             tgt_image_ind = int(image_file.split('/')[-1].split('.')[0])
 
             if self.margin_strategy == 'close':
-                reference_image_ind = random.randint(-10, 10) + tgt_image_ind
+                reference_image_ind = random.randint(-self.sample_margin, self.sample_margin) + tgt_image_ind
                 if reference_image_ind < 0:
                     reference_image_ind = 0
                 if reference_image_ind > video_length - 1:

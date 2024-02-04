@@ -509,6 +509,7 @@ class SDXLControl2ImagePipeline(
                     # timestep_cond=timestep_cond,
                     # cross_attention_kwargs=self.cross_attention_kwargs,
                     # added_cond_kwargs=added_cond_kwargs,
+                    pose_cond_fea=pose_fea,
                     return_dict=False,
                 )[0]
 
@@ -526,6 +527,8 @@ class SDXLControl2ImagePipeline(
                     if callback is not None and i % callback_steps == 0:
                         step_idx = i // getattr(self.scheduler, "order", 1)
                         callback(step_idx, t, latents)
+            reference_control_reader.clear()
+            reference_control_writer.clear()
 
         # Post-processing
         image = self.decode_latents(latents)  # (b, c, 1, h, w)

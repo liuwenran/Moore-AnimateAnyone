@@ -37,6 +37,7 @@ class ReferenceAttentionControl:
         self.reference_attn = reference_attn
         self.reference_adain = reference_adain
         self.fusion_blocks = fusion_blocks
+        self.do_classifier_free_guidance = do_classifier_free_guidance
         self.register_reference_hooks(
             mode,
             do_classifier_free_guidance,
@@ -53,11 +54,11 @@ class ReferenceAttentionControl:
         self,
         mode,
         do_classifier_free_guidance,
-        attention_auto_machine_weight,
-        gn_auto_machine_weight,
-        style_fidelity,
-        reference_attn,
-        reference_adain,
+        attention_auto_machine_weight=float("inf"),
+        gn_auto_machine_weight=1.0,
+        style_fidelity=1.0,
+        reference_attn=True,
+        reference_adain=False,
         dtype=torch.float16,
         batch_size=1,
         num_images_per_prompt=1,

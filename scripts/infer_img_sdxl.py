@@ -8,7 +8,7 @@ import av
 import numpy as np
 import torch
 import torchvision
-from diffusers import AutoencoderKL, DDIMScheduler
+from diffusers import AutoencoderKL, DDIMScheduler, ControlNetModel
 from diffusers.pipelines.stable_diffusion import StableDiffusionPipeline
 from diffusers.pipelines.stable_diffusion_xl import StableDiffusionXLPipeline
 from einops import repeat
@@ -50,11 +50,10 @@ def main():
         weight_dtype = torch.float16
     else:
         weight_dtype = torch.float32
-    
 
-    vae = AutoencoderKL.from_pretrained(
-        config.pretrained_vae_path,
-    ).to("cuda", dtype=weight_dtype)
+    pose_guider = PoseGuider(320, block_out_channels=(16, 32, 96, 256)).to(
+        dtype=weight_dtype, device="cuda"
+    )
 
     # weight_dtype = torch.float16
     # pretrained_model_name_or_path = '/mnt/petrelfs/liuwenran/.cache/huggingface/hub/models--stabilityai--stable-diffusion-xl-base-1.0/snapshots/462165984030d82259a11f4367a4eed129e94a7b'
@@ -72,19 +71,27 @@ def main():
     # ip_adapter_image = Image.open('/mnt/petrelfs/liuwenran/forks/Moore-AnimateAnyone/data/validate_pair_images/nantong_ref_480.jpg')
     # image = pipeline(prompt, ip_adapter_image=ip_adapter_image, num_inference_steps=25).images[0]
 
+    # controlnet = ControlNetModel.from_pretrained(
+    #     "diffusers/controlnet-canny-sdxl-1.0", torch_dtype=weight_dtype
+    # )
 
-    # inference_config_path = config.inference_config
-    # infer_config = OmegaConf.load(inference_config_path)
-    # denoising_unet = UNet3DConditionModel.from_pretrained_2d(
-    #     config.pretrained_base_model_path,
-    #     config.motion_module_path,
-    #     subfolder="unet",
-    #     unet_additional_kwargs=infer_config.unet_additional_kwargs,
-    # ).to(dtype=weight_dtype, device="cuda")
+    # canny_weight_path = '/mnt/petrelfs/liuwenran/.cache/huggingface/hub/models--diffusers--controlnet-canny-sdxl-1.0/snapshots/6c57eef07b4f634ede41bc560e5f3e2a321639ae/diffusion_pytorch_model.safetensors'
+    # controlnet_openpose_state_dict = load_file(canny_weight_path)
+    # # controlnet_openpose_state_dict = torch.load(cfg.controlnet_openpose_path)
+    # state_dict_to_load = {}
+    # for k in controlnet_openpose_state_dict.keys():
+    #     if k.startswith("controlnet_cond_embedding.") and k.find("conv_out") < 0:
+    #         new_k = k.replace("controlnet_cond_embedding.", "")
+    #         state_dict_to_load[new_k] = controlnet_openpose_state_dict[k]
+    # miss, _ = pose_guider.load_state_dict(state_dict_to_load, strict=False)
+    # import ipdb;ipdb.set_trace();
+    
 
-    pose_guider = PoseGuider(320, block_out_channels=(16, 32, 96, 256)).to(
-        dtype=weight_dtype, device="cuda"
-    )
+    vae = AutoencoderKL.from_pretrained(
+        config.pretrained_vae_path,
+    ).to("cuda", dtype=weight_dtype)
+
+
     from diffusers.models import UNet2DConditionModel
     reference_unet = UNet2DConditionModel.from_pretrained(
         config.pretrained_base_model_path,

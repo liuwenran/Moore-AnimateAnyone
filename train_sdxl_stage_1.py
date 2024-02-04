@@ -37,7 +37,7 @@ from src.models.mutual_self_attention import ReferenceAttentionControl
 from src.models.pose_guider import PoseGuider
 from src.models.unet_2d_condition import UNet2DConditionModel
 from src.models.unet_3d import UNet3DConditionModel
-from src.pipelines.pipeline_pose2img import Pose2ImagePipeline
+from src.pipelines.pipeline_sdxl_control2img import SDXLControl2ImagePipeline
 from src.utils.util import delete_additional_ckpt, import_filename, seed_everything
 
 warnings.filterwarnings("ignore")
@@ -70,18 +70,21 @@ class Net(nn.Module):
         timesteps,
         ref_image_latents,
         clip_image_embeds,
+        clip_image_embeds_2,
         pose_img,
         uncond_fwd: bool = False,
     ):
         pose_cond_tensor = pose_img.to(device="cuda")
         pose_fea = self.pose_guider(pose_cond_tensor)
 
+        image_embeds = torch.concat([clip_image_embeds, clip_image_embeds_2], dim=-1)
+
         if not uncond_fwd:
             ref_timesteps = torch.zeros_like(timesteps)
             self.reference_unet(
                 ref_image_latents,
                 ref_timesteps,
-                encoder_hidden_states=clip_image_embeds,
+                encoder_hidden_states=image_embeds,
                 return_dict=False,
             )
             self.reference_control_reader.update(self.reference_control_writer)
@@ -90,7 +93,7 @@ class Net(nn.Module):
             noisy_latents,
             timesteps,
             pose_cond_fea=pose_fea,
-            encoder_hidden_states=clip_image_embeds,
+            encoder_hidden_states=image_embeds,
         ).sample
 
         return model_pred
@@ -130,6 +133,7 @@ def log_validation(
     args,
     vae,
     image_enc,
+    image_enc_2,
     net,
     scheduler,
     accelerator,
@@ -147,15 +151,17 @@ def log_validation(
     # cast unet dtype
     vae = vae.to(dtype=torch.float32)
     image_enc = image_enc.to(dtype=torch.float32)
+    image_enc_2 = image_enc_2.to(dtype=torch.float32)
 
     # pose_detector = DWposeDetector()
     # pose_detector.to(accelerator.device)
 
-    pipe = Pose2ImagePipeline(
+    pipe = SDXLControl2ImagePipeline(
         vae=vae,
         image_encoder=image_enc,
+        image_encoder_2=image_enc_2,
         reference_unet=reference_unet,
-        denoising_unet=denoising_unet,
+        unet=denoising_unet,
         pose_guider=pose_guider,
         scheduler=scheduler,
     )
@@ -185,10 +191,10 @@ def log_validation(
         image = pipe(
             ref_image_pil,
             control_image,
-            width,
-            height,
-            20,
-            3.5,
+            width=width,
+            height=height,
+            num_inference_steps=20,
+            guidance_scale=3.5,
             generator=generator,
         ).images
         image = image[0, :, 0].permute(1, 2, 0).cpu().numpy()  # (3, 512, 512)
@@ -206,6 +212,7 @@ def log_validation(
 
     vae = vae.to(dtype=torch.float16)
     image_enc = image_enc.to(dtype=torch.float16)
+    image_enc_2 = image_enc_2.to(dtype=torch.float16)
 
     del pipe
     torch.cuda.empty_cache()
@@ -272,7 +279,9 @@ def main(cfg):
     reference_unet = UNet2DConditionModel.from_pretrained(
         cfg.base_model_path,
         subfolder="unet",
+        addition_embed_type=None
     ).to(device="cuda")
+
     denoising_unet = UNet3DConditionModel.from_pretrained_2d(
         cfg.base_model_path,
         "",
@@ -284,8 +293,11 @@ def main(cfg):
     ).to(device="cuda")
 
     image_enc = CLIPVisionModelWithProjection.from_pretrained(
-        cfg.base_model_path,
-        subfolder="image_encoder",
+        cfg.image_encoder_path,
+    ).to(dtype=weight_dtype, device="cuda")
+
+    image_enc_2 = CLIPVisionModelWithProjection.from_pretrained(
+        cfg.image_encoder_2_path,
     ).to(dtype=weight_dtype, device="cuda")
 
     if cfg.pose_guider_pretrain:
@@ -293,7 +305,7 @@ def main(cfg):
             conditioning_embedding_channels=320, block_out_channels=(16, 32, 96, 256)
         ).to(device="cuda")
         # load pretrained controlnet-openpose params for pose_guider
-        controlnet_openpose_state_dict = load_file(cfg.controlnet_hed_path)
+        controlnet_openpose_state_dict = load_file(cfg.controlnet_canny_path)
         # controlnet_openpose_state_dict = torch.load(cfg.controlnet_openpose_path)
         state_dict_to_load = {}
         for k in controlnet_openpose_state_dict.keys():
@@ -310,12 +322,14 @@ def main(cfg):
     # Freeze
     vae.requires_grad_(False)
     image_enc.requires_grad_(False)
+    image_enc_2.requires_grad_(False)
 
     # Explictly declare training models
-    denoising_unet.requires_grad_(True)
+    # denoising_unet.requires_grad_(True)
+    denoising_unet.requires_grad_(False)
     #  Some top layer parames of reference_unet don't need grad
     for name, param in reference_unet.named_parameters():
-        if "up_blocks.3" in name:
+        if "up_blocks.2" in name:
             param.requires_grad_(False)
         else:
             param.requires_grad_(True)
@@ -426,7 +440,6 @@ def main(cfg):
         train_dataloader,
         lr_scheduler,
     )
-
     # We need to recalculate our total training steps as the size of the training dataloader may have changed.
     num_update_steps_per_epoch = math.ceil(
         len(train_dataloader) / cfg.solver.gradient_accumulation_steps
@@ -502,7 +515,7 @@ def main(cfg):
                 with torch.no_grad():
                     latents = vae.encode(pixel_values).latent_dist.sample()
                     latents = latents.unsqueeze(2)  # (b, c, 1, h, w)
-                    latents = latents * 0.18215
+                    latents = latents * vae.config.scaling_factor
 
                 noise = torch.randn_like(latents)
                 if cfg.noise_offset > 0.0:
@@ -554,7 +567,11 @@ def main(cfg):
                     clip_image_embeds = image_enc(
                         clip_img.to("cuda", dtype=weight_dtype)
                     ).image_embeds
+                    clip_image_embeds_2 = image_enc_2(
+                        clip_img.to("cuda", dtype=weight_dtype)
+                    ).image_embeds
                     image_prompt_embeds = clip_image_embeds.unsqueeze(1)  # (bs, 1, d)
+                    image_prompt_embeds_2 = clip_image_embeds_2.unsqueeze(1)  # (bs, 1, d)
 
                 # add noise
                 noisy_latents = train_noise_scheduler.add_noise(
@@ -578,6 +595,7 @@ def main(cfg):
                     timesteps,
                     ref_image_latents,
                     image_prompt_embeds,
+                    image_prompt_embeds_2,
                     tgt_pose_img,
                     uncond_fwd,
                 )
@@ -635,6 +653,7 @@ def main(cfg):
                         accelerator.save_state(save_path)
 
                 if global_step == 1 or global_step % cfg.val.validation_steps == 0:
+                # if global_step % cfg.val.validation_steps == 0:
                     if accelerator.is_main_process:
                         generator = torch.Generator(device=accelerator.device)
                         generator.manual_seed(cfg.seed)
@@ -643,6 +662,7 @@ def main(cfg):
                             args=config.val,
                             vae=vae,
                             image_enc=image_enc,
+                            image_enc_2=image_enc_2,
                             net=net,
                             scheduler=val_noise_scheduler,
                             accelerator=accelerator,
@@ -650,15 +670,20 @@ def main(cfg):
                             height=cfg.data.train_height,
                         )
 
+                        reference_control_reader.register_reference_hooks('read', do_classifier_free_guidance=False, fusion_blocks="full")
+                        reference_control_writer.register_reference_hooks('write', do_classifier_free_guidance=False, fusion_blocks="full")
+
+                        val_save_dir = os.path.join(save_dir, 'val')
+                        if not os.path.exists(val_save_dir):
+                            os.makedirs(val_save_dir)
                         for sample_id, sample_dict in enumerate(sample_dicts):
                             sample_name = sample_dict["name"]
                             img = sample_dict["img"]
-                            with TemporaryDirectory() as temp_dir:
-                                out_file = Path(
-                                    f"{temp_dir}/{global_step:06d}-{sample_name}.png"
-                                )
-                                img.save(out_file)
-                                mlflow.log_artifact(out_file)
+                            out_file = Path(
+                                f"{val_save_dir}/{global_step:06d}-{sample_name}.png"
+                            )
+                            img.save(out_file)
+                            mlflow.log_artifact(out_file)
 
             logs = {
                 "step_loss": loss.detach().item(),
