@@ -17,6 +17,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch.utils.checkpoint
 import transformers
+import cv2
 from accelerate import Accelerator
 from accelerate.logging import get_logger
 from accelerate.utils import DistributedDataParallelKwargs
@@ -77,8 +78,14 @@ class Net(nn.Module):
         pose_cond_tensor = pose_img.to(device="cuda")
         pose_fea = self.pose_guider(pose_cond_tensor)
 
-        image_embeds = torch.concat([clip_image_embeds, clip_image_embeds_2], dim=-1)
+        if clip_image_embeds is not None and clip_image_embeds_2 is not None:
+            image_embeds = torch.concat([clip_image_embeds, clip_image_embeds_2], dim=-1)
+        else:
+            image_embeds = torch.load('results/prompt_embeds/prompt_embeds.pt')
+            image_embeds = image_embeds.to(device='cuda', dtype=torch.float16)
 
+        bs = noisy_latents.shape[0]
+        image_embeds = image_embeds.repeat((bs, 1, 1))
         if not uncond_fwd:
             ref_timesteps = torch.zeros_like(timesteps)
             self.reference_unet(
@@ -139,6 +146,7 @@ def log_validation(
     accelerator,
     width,
     height,
+    control_type='canny'
 ):
     logger.info("Running validation... ")
 
@@ -150,8 +158,12 @@ def log_validation(
     generator = torch.Generator(device=accelerator.device).manual_seed(42)
     # cast unet dtype
     vae = vae.to(dtype=torch.float32)
-    image_enc = image_enc.to(dtype=torch.float32)
-    image_enc_2 = image_enc_2.to(dtype=torch.float32)
+    if not args.wo_img_embed:
+        image_enc = image_enc.to(dtype=torch.float32)
+        image_enc_2 = image_enc_2.to(dtype=torch.float32)
+    else:
+        image_enc = None
+        image_enc_2 = None
 
     # pose_detector = DWposeDetector()
     # pose_detector.to(accelerator.device)
@@ -167,26 +179,44 @@ def log_validation(
     )
     pipe = pipe.to(accelerator.device)
 
-    ref_image_paths = open(args.validation_ref_images, 'r').readlines()
-    tgt_image_paths = open(args.validation_tgt_images, 'r').readlines()
+    ref_image_paths = open(args.val.validation_ref_images, 'r').readlines()
+    tgt_image_paths = open(args.val.validation_tgt_images, 'r').readlines()
 
-    from controlnet_aux.hed import Network
-    from controlnet_aux import HEDdetector
-    hed_net = Network('/mnt/petrelfs/liuwenran/.cache/huggingface/hub/models--lllyasviel--Annotators/snapshots/982e7edaec38759d914a963c48c4726685de7d96/network-bsds500.pth')
-    hed_detector = HEDdetector(hed_net)
+    if control_type == 'hed':
+        from controlnet_aux.hed import Network
+        from controlnet_aux import HEDdetector
+        hed_net = Network('/mnt/petrelfs/liuwenran/.cache/huggingface/hub/models--lllyasviel--Annotators/snapshots/982e7edaec38759d914a963c48c4726685de7d96/network-bsds500.pth')
+        hed_detector = HEDdetector(hed_net)
 
     pil_images = []
     for ind in range(len(ref_image_paths)):
         ref_image_path = ref_image_paths[ind].strip()
         tgt_image_path = tgt_image_paths[ind].strip()
 
-        ref_name = ref_image_path.split("/")[-1].replace(".png", "")
-        tgt_name = tgt_image_path.split("/")[-1].replace(".png", "")
+        ref_name = ref_image_path.split("/")[-1].split('.')[0]
+        tgt_name = tgt_image_path.split("/")[-1].split('.')[0]
         ref_image_pil = Image.open(ref_image_path).convert("RGB")
         tgt_image_pil = Image.open(tgt_image_path).convert("RGB")
         
-        control_image = hed_detector(tgt_image_pil)
+        if control_type == 'canny':
+            control_image = np.array(tgt_image_pil)
+            control_image = cv2.Canny(control_image, 100, 200)
+            control_image = control_image[:, :, None]
+            control_image = np.concatenate([control_image, control_image, control_image], axis=2)
+            control_image = Image.fromarray(control_image)
+        elif control_type == 'hed':
+            control_image = hed_detector(tgt_image_pil)
+        else:
+            print('control type not supported.')
+            import sys
+            sys.exit()
         control_image = control_image.resize((width, height))
+    
+        if image_enc is None and image_enc_2 is None:
+            image_embeds = torch.load('results/prompt_embeds/prompt_embeds.pt')
+            image_embeds = image_embeds.to(device='cuda', dtype=torch.float16)
+        else:
+            image_embeds = None
 
         image = pipe(
             ref_image_pil,
@@ -196,6 +226,7 @@ def log_validation(
             num_inference_steps=20,
             guidance_scale=3.5,
             generator=generator,
+            image_embeds=image_embeds
         ).images
         image = image[0, :, 0].permute(1, 2, 0).cpu().numpy()  # (3, 512, 512)
         res_image_pil = Image.fromarray((image * 255).astype(np.uint8))
@@ -211,8 +242,9 @@ def log_validation(
         pil_images.append({"name": f"{ref_name}_{tgt_name}", "img": canvas})
 
     vae = vae.to(dtype=torch.float16)
-    image_enc = image_enc.to(dtype=torch.float16)
-    image_enc_2 = image_enc_2.to(dtype=torch.float16)
+    if not args.wo_img_embed:
+        image_enc = image_enc.to(dtype=torch.float16)
+        image_enc_2 = image_enc_2.to(dtype=torch.float16)
 
     del pipe
     torch.cuda.empty_cache()
@@ -262,16 +294,13 @@ def main(cfg):
             f"Do not support weight dtype: {cfg.weight_dtype} during training"
         )
 
-    sched_kwargs = OmegaConf.to_container(cfg.noise_scheduler_kwargs)
-    if cfg.enable_zero_snr:
-        sched_kwargs.update(
-            rescale_betas_zero_snr=True,
-            timestep_spacing="trailing",
-            prediction_type="v_prediction",
-        )
-    val_noise_scheduler = DDIMScheduler(**sched_kwargs)
-    sched_kwargs.update({"beta_schedule": "scaled_linear"})
-    train_noise_scheduler = DDIMScheduler(**sched_kwargs)
+    from diffusers.schedulers import EulerDiscreteScheduler, DDPMScheduler
+    val_noise_scheduler = EulerDiscreteScheduler.from_pretrained(
+        cfg.base_model_path,
+        subfolder="scheduler",
+    )
+    train_noise_scheduler = DDPMScheduler.from_pretrained(cfg.base_model_path, subfolder="scheduler")
+
     vae = AutoencoderKL.from_pretrained(cfg.vae_model_path).to(
         "cuda", dtype=weight_dtype
     )
@@ -292,13 +321,17 @@ def main(cfg):
         },
     ).to(device="cuda")
 
-    image_enc = CLIPVisionModelWithProjection.from_pretrained(
-        cfg.image_encoder_path,
-    ).to(dtype=weight_dtype, device="cuda")
+    if not cfg.wo_img_embed:
+        image_enc = CLIPVisionModelWithProjection.from_pretrained(
+            cfg.image_encoder_path,
+        ).to(dtype=weight_dtype, device="cuda")
 
-    image_enc_2 = CLIPVisionModelWithProjection.from_pretrained(
-        cfg.image_encoder_2_path,
-    ).to(dtype=weight_dtype, device="cuda")
+        image_enc_2 = CLIPVisionModelWithProjection.from_pretrained(
+            cfg.image_encoder_2_path,
+        ).to(dtype=weight_dtype, device="cuda")
+    else:
+        image_enc = None
+        image_enc_2 = None
 
     if cfg.pose_guider_pretrain:
         pose_guider = PoseGuider(
@@ -321,8 +354,9 @@ def main(cfg):
 
     # Freeze
     vae.requires_grad_(False)
-    image_enc.requires_grad_(False)
-    image_enc_2.requires_grad_(False)
+    if not cfg.wo_img_embed:
+        image_enc.requires_grad_(False)
+        image_enc_2.requires_grad_(False)
 
     # Explictly declare training models
     # denoising_unet.requires_grad_(True)
@@ -559,19 +593,24 @@ def main(cfg):
                     ref_image_latents = vae.encode(
                         ref_img
                     ).latent_dist.sample()  # (bs, d, 64, 64)
-                    ref_image_latents = ref_image_latents * 0.18215
+                    ref_image_latents = ref_image_latents * vae.config.scaling_factor
 
-                    clip_img = torch.stack(clip_image_list, dim=0).to(
-                        dtype=image_enc.dtype, device=image_enc.device
-                    )
-                    clip_image_embeds = image_enc(
-                        clip_img.to("cuda", dtype=weight_dtype)
-                    ).image_embeds
-                    clip_image_embeds_2 = image_enc_2(
-                        clip_img.to("cuda", dtype=weight_dtype)
-                    ).image_embeds
-                    image_prompt_embeds = clip_image_embeds.unsqueeze(1)  # (bs, 1, d)
-                    image_prompt_embeds_2 = clip_image_embeds_2.unsqueeze(1)  # (bs, 1, d)
+                    if not cfg.wo_img_embed:
+                        clip_img = torch.stack(clip_image_list, dim=0).to(
+                            dtype=image_enc.dtype, device=image_enc.device
+                        )
+                        clip_image_embeds = image_enc(
+                            clip_img.to("cuda", dtype=weight_dtype)
+                        ).image_embeds
+                        clip_image_embeds_2 = image_enc_2(
+                            clip_img.to("cuda", dtype=weight_dtype)
+                        ).image_embeds
+                        image_prompt_embeds = clip_image_embeds.unsqueeze(1)  # (bs, 1, d)
+                        image_prompt_embeds_2 = clip_image_embeds_2.unsqueeze(1)  # (bs, 1, d)
+                    else:
+                        image_prompt_embeds = None
+                        image_prompt_embeds_2 = None
+
 
                 # add noise
                 noisy_latents = train_noise_scheduler.add_noise(
@@ -659,7 +698,7 @@ def main(cfg):
                         generator.manual_seed(cfg.seed)
 
                         sample_dicts = log_validation(
-                            args=config.val,
+                            args=config,
                             vae=vae,
                             image_enc=image_enc,
                             image_enc_2=image_enc_2,
@@ -668,6 +707,7 @@ def main(cfg):
                             accelerator=accelerator,
                             width=cfg.data.train_width,
                             height=cfg.data.train_height,
+                            control_type=cfg.data.control_type
                         )
 
                         reference_control_reader.register_reference_hooks('read', do_classifier_free_guidance=False, fusion_blocks="full")

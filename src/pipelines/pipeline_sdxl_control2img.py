@@ -364,6 +364,7 @@ class SDXLControl2ImagePipeline(
         crops_coords_top_left: Tuple[int, int] = (0, 0),
         target_size: Optional[Tuple[int, int]] = None,
         clip_skip: Optional[int] = None,
+        image_embeds: Optional[torch.FloatTensor] = None,
         **kwargs,
     ):
         # 0. Default height and width to unet
@@ -404,9 +405,13 @@ class SDXLControl2ImagePipeline(
         # 4. Prepare timesteps
         timesteps, num_inference_steps = retrieve_timesteps(self.scheduler, num_inference_steps, device, timesteps)
 
-        image_embeds, negative_image_embeds = self.encode_image(ref_image, device, num_images_per_prompt)
-        image_embeds = image_embeds.unsqueeze(1)
-        negative_image_embeds = negative_image_embeds.unsqueeze(1)
+        if image_embeds is not None:
+            image_embeds = image_embeds.to(device=device, dtype=self.unet.dtype)
+            negative_image_embeds = torch.zeros_like(image_embeds)
+        else:
+            image_embeds, negative_image_embeds = self.encode_image(ref_image, device, num_images_per_prompt)
+            image_embeds = image_embeds.unsqueeze(1)
+            negative_image_embeds = negative_image_embeds.unsqueeze(1)
         if self.do_classifier_free_guidance:
             image_embeds = torch.cat([negative_image_embeds, image_embeds])
             image_embeds = image_embeds.to(device)

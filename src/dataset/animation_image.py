@@ -133,11 +133,11 @@ class AnimationDataset(Dataset):
                 control_image = Image.fromarray(control_image)
             elif self.control_type == 'hed':
                 control_image = self.hed(tgt_image)
-                control_image = control_image.resize(tgt_image.size)
             elif self.control_type == 'pose':
                 control_image_path = image_file.replace(self.args.image_dir_key, self.args.pose_dir_key)
                 control_image_path = control_image_path.replace('png', 'jpg')
                 control_image = Image.open(control_image_path).convert("RGB")
+            control_image = control_image.resize(tgt_image.size)
 
         except Exception:
             return self.__getitem__((idx + 1) % len(self.data))

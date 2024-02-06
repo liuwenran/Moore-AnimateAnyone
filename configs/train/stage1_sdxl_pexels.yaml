@@ -1,14 +1,14 @@
 data:
-  train_bs: 1
-  train_width: 1024
-  train_height: 1024
+  train_bs: 2
+  train_width: 832
+  train_height: 832
   meta_paths:
     - "./data/fashion_meta.json"
   images_file: /mnt/petrelfs/share_data/liuwenran/pexels_dataset/pexels_frames_train_info/all_images_sort.txt
   # Margin of frame indexes between ref and tgt images
   sample_margin: 20
   margin_strategy: far
-  control_type: hed
+  control_type: canny
 
 solver:
   gradient_accumulation_steps: 1
@@ -32,8 +32,8 @@ solver:
 
 val:
   validation_steps: 200
-  validation_ref_images: /mnt/petrelfs/liuwenran/forks/Moore-AnimateAnyone/data/validate_pair_images_tem.txt
-  validation_tgt_images: /mnt/petrelfs/liuwenran/forks/Moore-AnimateAnyone/data/validate_pair_images_part_two_tem.txt
+  validation_ref_images: /mnt/petrelfs/liuwenran/forks/Moore-AnimateAnyone/data/validate_pair_images.txt
+  validation_tgt_images: /mnt/petrelfs/liuwenran/forks/Moore-AnimateAnyone/data/validate_pair_images_part_two.txt
 
 
 noise_scheduler_kwargs:
@@ -59,11 +59,12 @@ uncond_ratio: 0.1
 noise_offset: 0.05
 snr_gamma: 5.0
 enable_zero_snr: True 
-pose_guider_pretrain: True 
+pose_guider_pretrain: True
+wo_img_embed: True
 
 seed: 12580
 resume_from_checkpoint: ''
 checkpointing_steps: 2000
 save_model_epoch_interval: 5
-exp_name: 'stage1_sdxl_pexels'
+exp_name: 'stage1_sdxl_pexels_wo_imembed_scheduler'
 output_dir: './exp_output'  
