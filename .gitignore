@@ -5,6 +5,7 @@ output/
 mlruns/
 data/
 exp_output/
+results/
 
 *.pth
 *.pt

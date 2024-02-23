@@ -83,9 +83,9 @@ class Net(nn.Module):
         else:
             image_embeds = torch.load('results/prompt_embeds/prompt_embeds.pt')
             image_embeds = image_embeds.to(device='cuda', dtype=torch.float16)
+            bs = noisy_latents.shape[0]
+            image_embeds = image_embeds.repeat((bs, 1, 1))
 
-        bs = noisy_latents.shape[0]
-        image_embeds = image_embeds.repeat((bs, 1, 1))
         if not uncond_fwd:
             ref_timesteps = torch.zeros_like(timesteps)
             self.reference_unet(
@@ -367,6 +367,17 @@ def main(cfg):
             param.requires_grad_(False)
         else:
             param.requires_grad_(True)
+
+    if not cfg.wo_img_embed:
+        for name, param in image_enc.named_parameters():
+            if 'visual_projection' in name:
+                print(name)
+                param.requires_grad_(True)
+
+        for name, param in image_enc_2.named_parameters():
+            if 'visual_projection' in name:
+                print(name)
+                param.requires_grad_(True)
 
     pose_guider.requires_grad_(True)
 
