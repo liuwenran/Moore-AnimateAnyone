@@ -359,14 +359,21 @@ def main(cfg):
         image_enc_2.requires_grad_(False)
 
     # Explictly declare training models
-    # denoising_unet.requires_grad_(True)
-    denoising_unet.requires_grad_(False)
+    if 'tune_denoising_unet' in config.keys() and config.tune_denoising_unet:
+        denoising_unet.requires_grad_(True)
+    else:
+        denoising_unet.requires_grad_(False)
+
     #  Some top layer parames of reference_unet don't need grad
-    for name, param in reference_unet.named_parameters():
-        if "up_blocks.2" in name:
+    if 'tune_denoising_unet' in config.keys() and config.tune_denoising_unet:
+        for name, param in reference_unet.named_parameters():
             param.requires_grad_(False)
-        else:
-            param.requires_grad_(True)
+    else:
+        for name, param in reference_unet.named_parameters():
+            if "up_blocks.2" in name:
+                param.requires_grad_(False)
+            else:
+                param.requires_grad_(True)
 
     if not cfg.wo_img_embed:
         for name, param in image_enc.named_parameters():

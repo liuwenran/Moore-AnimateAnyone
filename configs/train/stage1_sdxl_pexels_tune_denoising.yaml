@@ -1,7 +1,7 @@
 data:
-  train_bs: 1
-  train_width: 704
-  train_height: 1280
+  train_bs: 2
+  train_width: 768
+  train_height: 768
   meta_paths:
     - "./data/fashion_meta.json"
   images_file: /mnt/petrelfs/share_data/liuwenran/pexels_dataset/pexels_frames_train_info/all_images_sort.txt
@@ -54,6 +54,10 @@ image_encoder_2_path: '/mnt/petrelfs/liuwenran/.cache/huggingface/hub/models--la
 controlnet_canny_path: '/mnt/petrelfs/liuwenran/.cache/huggingface/hub/models--diffusers--controlnet-canny-sdxl-1.0/snapshots/6c57eef07b4f634ede41bc560e5f3e2a321639ae/diffusion_pytorch_model.safetensors'
 # controlnet_hed_path: '/mnt/petrelfs/liuwenran/.cache/huggingface/hub/models--lllyasviel--control_v11p_sd15_softedge/snapshots/b5bcad0c48e9b12f091968cf5eadbb89402d6bc9/diffusion_pytorch_model.safetensors'
 
+
+pretrained_weight: /mnt/petrelfs/liuwenran/forks/Moore-AnimateAnyone/exp_output/stage1_sdxl_pexels_wo_imembed_scheduler/checkpoint-30000/model.safetensors
+tune_denoising_unet: True
+
 weight_dtype: 'fp16'  # [fp16, fp32]
 uncond_ratio: 0.1
 noise_offset: 0.05
@@ -66,5 +70,5 @@ seed: 12580
 resume_from_checkpoint: ''
 checkpointing_steps: 2000
 save_model_epoch_interval: 5
-exp_name: 'stage1_sdxl_pexels_fixar'
+exp_name: 'stage1_sdxl_pexels_tune_denoising_unet'
 output_dir: './exp_output'  

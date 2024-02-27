@@ -16,12 +16,19 @@ from omegaconf import OmegaConf
 from PIL import Image
 from torchvision import transforms
 from transformers import CLIPVisionModelWithProjection, CLIPImageProcessor
+from transformers import (
+    CLIPImageProcessor,
+    CLIPTextModel,
+    CLIPTextModelWithProjection,
+    CLIPTokenizer,
+    CLIPVisionModelWithProjection,
+)
 
 from configs.prompts.test_cases import TestCasesDict
 from src.models.pose_guider import PoseGuider
 from src.models.unet_2d_condition import UNet2DConditionModel
 from src.models.unet_3d import UNet3DConditionModel
-from src.pipelines.pipeline_sdxl_control2img import SDXLControl2ImagePipeline
+from src.pipelines.pipeline_sdxl_control2img_debug import SDXLControl2ImagePipeline
 from src.utils.util import get_fps, read_frames, save_videos_grid
 from train_stage_1 import Net
 from safetensors.torch import load_file
@@ -32,7 +39,7 @@ def parse_args():
     parser.add_argument("-W", type=int, default=512)
     parser.add_argument("-H", type=int, default=912)
     parser.add_argument("-L", type=int, default=24)
-    parser.add_argument("--seed", type=int, default=42)
+    parser.add_argument("--seed", type=int, default=1)
     parser.add_argument("--cfg", type=float, default=3.5)
     parser.add_argument("--steps", type=int, default=30)
     parser.add_argument("--fps", type=int)
@@ -102,8 +109,10 @@ def main():
     # denoising_unet = UNet2DConditionModel.from_pretrained(
     #     config.pretrained_base_model_path,
     #     subfolder="unet",
+    #     addition_embed_type=None
     # ).to(dtype=weight_dtype, device="cuda")
     # import ipdb;ipdb.set_trace();
+
     denoising_unet = UNet3DConditionModel.from_pretrained_2d(
         config.pretrained_base_model_path,
         "",
@@ -113,7 +122,7 @@ def main():
             "unet_use_temporal_attention": False,
         },
     ).to(device="cuda")
-
+    # import ipdb;ipdb.set_trace();
 
     # sched_kwargs = OmegaConf.to_container(config.noise_scheduler_kwargs)
     # scheduler = DDIMScheduler(**sched_kwargs)
@@ -131,6 +140,16 @@ def main():
     image_enc_2 = CLIPVisionModelWithProjection.from_pretrained(
         'laion/CLIP-ViT-bigG-14-laion2B-39B-b160k',
     ).to(dtype=weight_dtype, device="cuda")
+    # image_enc = None
+    # image_enc_2 = None
+
+    # text_enc = CLIPTextModel.from_pretrained(
+    #     'openai/clip-vit-large-patch14',
+    # ).to(dtype=weight_dtype, device="cuda")
+
+    # text_enc_2 = CLIPTextModelWithProjection.from_pretrained(
+    #     'laion/CLIP-ViT-bigG-14-laion2B-39B-b160k',
+    # ).to(dtype=weight_dtype, device="cuda")
 
     generator = torch.manual_seed(args.seed)
 
@@ -166,6 +185,8 @@ def main():
         unet=denoising_unet,
         pose_guider=pose_guider,
         scheduler=scheduler,
+        text_encoder=None,
+        text_encoder_2=None,
     )
     pipe = pipe.to("cuda", dtype=weight_dtype)
 
@@ -178,13 +199,15 @@ def main():
     time_str = datetime.now().strftime("%H%M")
     save_dir_name = f"{time_str}--seed_{args.seed}-{args.W}x{args.H}"
 
-    save_dir = Path(f"output/{date_str}/{save_dir_name}")
+    save_dir = Path(f"output/debug_sdxl/{date_str}/{save_dir_name}")
     save_dir.mkdir(exist_ok=True, parents=True)
 
     val_image_lines = open(config.validate_image_file).readlines()
     val_control_image_lines = open(config.validate_control_image_file).readlines()
 
     width, height = args.W, args.H
+    width = 1024
+    height = 1024
 
     pil_images = []
     for ind in range(len(val_image_lines)):
@@ -211,6 +234,7 @@ def main():
         ).images
         # image = image[0].permute(1, 2, 0).cpu().numpy()  # (3, 512, 512)
         image = image[0, :, 0].permute(1, 2, 0).cpu().numpy()  # (3, 512, 512)
+        print(f'image shape {image.shape}')
         res_image_pil = Image.fromarray((image * 255).astype(np.uint8))
         # Save ref_image, src_image and the generated_image
         w, h = res_image_pil.size
