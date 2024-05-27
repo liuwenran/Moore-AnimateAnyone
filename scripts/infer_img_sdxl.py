@@ -28,10 +28,13 @@ from configs.prompts.test_cases import TestCasesDict
 from src.models.pose_guider import PoseGuider
 from src.models.unet_2d_condition import UNet2DConditionModel
 from src.models.unet_3d import UNet3DConditionModel
-from src.pipelines.pipeline_sdxl_control2img_debug import SDXLControl2ImagePipeline
+from src.pipelines.pipeline_sdxl_control2img import SDXLControl2ImagePipeline
 from src.utils.util import get_fps, read_frames, save_videos_grid
 from train_stage_1 import Net
 from safetensors.torch import load_file
+from src.dwpose import DWposeDetector
+import cv2
+import math
 
 def parse_args():
     parser = argparse.ArgumentParser()
@@ -47,6 +50,81 @@ def parse_args():
 
     return args
 
+
+## 检测 reference 中的 pose
+def detect_character(reference_path):
+    dwprocessor = DWposeDetector()
+    dwprocessor = dwprocessor.to('cuda')
+
+    image = cv2.imread(reference_path, cv2.IMREAD_UNCHANGED)
+    array = cv2.cvtColor(image, cv2.COLOR_RGBA2RGB)
+    with torch.no_grad():
+        detected_map, body_score = dwprocessor(array)
+    detected_map = np.array(detected_map)    
+
+    return detected_map
+
+
+def pose_coord(image):
+
+    # 将图像转换为灰度图像
+    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+    # 二值化图像（将非黑色像素设为白色）
+    _, threshold = cv2.threshold(gray, 10, 255, cv2.THRESH_BINARY)
+    # 计算非零像素的坐标
+    non_zero_pixels = np.nonzero(threshold)
+    # 获取上边界
+    y_min = np.min(non_zero_pixels[0])
+    y_max = np.max(non_zero_pixels[0])
+    x_min = np.min(non_zero_pixels[1])
+    x_max = np.max(non_zero_pixels[1])
+    pose_coord = []
+    pose_coord.append(x_min)
+    pose_coord.append(y_min)
+    pose_coord.append(x_max)
+    pose_coord.append(y_max)
+
+    pose_coord = [int(num) for num in pose_coord]
+
+    return pose_coord
+
+
+def align_pose(reference_path, driving_pose_path):
+    # driving_pose_npy = cv2.imread(driving_pose_path)
+    pose_image_pil = Image.open(driving_pose_path).convert("RGB")
+    driving_pose_npy = np.array(pose_image_pil)
+    pose_character_npy = detect_character(reference_path)
+    pose_driving_coord = pose_coord(driving_pose_npy) # 驱动pose 的 范围
+    pose_character_coord = pose_coord(pose_character_npy) # 人物pose 的范围
+
+    reference_img = Image.open(reference_path)
+    roi = driving_pose_npy[pose_driving_coord[1]:pose_driving_coord[3], pose_driving_coord[0]:pose_driving_coord[2]]  # driving_pose 裁剪区域
+    deta_y_character = pose_character_coord[3] - pose_character_coord[1]
+    deta_x_character = pose_character_coord[2] - pose_character_coord[0]
+    deta_y_driving = pose_driving_coord[3] - pose_driving_coord[1]
+
+    radio = deta_y_character / deta_y_driving  # 计算 refer人物的pose 与 driving pose 的比例
+
+    roi_scaled = cv2.resize(roi, (math.ceil(roi.shape[1]*radio), deta_y_character)) # driving pose进行缩放 h*w
+
+    driving_pose_target = np.zeros_like(pose_character_npy)
+
+    mid = int((pose_character_coord[2] + pose_character_coord[0]) / 2)
+
+    x_target = int (mid - roi_scaled.shape[1]/2)
+
+    if x_target<0 and x_target + roi_scaled.shape[1] > driving_pose_target.shape[1]: # 左右都超
+        driving_pose_target[pose_character_coord[1]:pose_character_coord[3], 0:driving_pose_target.shape[1]] = roi_scaled[0:roi_scaled.shape[0], -x_target: (- x_target + driving_pose_target.shape[1])]
+    elif x_target<0:  # 左边超范围
+        driving_pose_target[pose_character_coord[1]:pose_character_coord[3], 0: x_target + roi_scaled.shape[1]] = roi_scaled[0:roi_scaled.shape[0], -x_target:roi_scaled.shape[1]]
+    elif x_target + roi_scaled.shape[1] > driving_pose_target.shape[1]: # 右边超范围
+        driving_pose_target[pose_character_coord[1]:pose_character_coord[3], x_target:driving_pose_target.shape[1]] = roi_scaled[0:roi_scaled.shape[0], 0 : (- x_target + driving_pose_target.shape[1])]    
+    else:
+        driving_pose_target[pose_character_coord[1]:pose_character_coord[3], x_target:(x_target + roi_scaled.shape[1])] = roi_scaled
+
+    driving_pose = Image.fromarray(driving_pose_target)
+
+    return driving_pose
 
 def main():
     args = parse_args()
@@ -98,8 +176,6 @@ def main():
         config.pretrained_vae_path,
     ).to("cuda", dtype=weight_dtype)
 
-
-    from diffusers.models import UNet2DConditionModel
     reference_unet = UNet2DConditionModel.from_pretrained(
         config.pretrained_base_model_path,
         subfolder="unet",
@@ -133,15 +209,15 @@ def main():
     )
 
 
-    image_enc = CLIPVisionModelWithProjection.from_pretrained(
-        'openai/clip-vit-large-patch14',
-    ).to(dtype=weight_dtype, device="cuda")
+    # image_enc = CLIPVisionModelWithProjection.from_pretrained(
+    #     'openai/clip-vit-large-patch14',
+    # ).to(dtype=weight_dtype, device="cuda")
 
-    image_enc_2 = CLIPVisionModelWithProjection.from_pretrained(
-        'laion/CLIP-ViT-bigG-14-laion2B-39B-b160k',
-    ).to(dtype=weight_dtype, device="cuda")
-    # image_enc = None
-    # image_enc_2 = None
+    # image_enc_2 = CLIPVisionModelWithProjection.from_pretrained(
+    #     'laion/CLIP-ViT-bigG-14-laion2B-39B-b160k',
+    # ).to(dtype=weight_dtype, device="cuda")
+    image_enc = None
+    image_enc_2 = None
 
     # text_enc = CLIPTextModel.from_pretrained(
     #     'openai/clip-vit-large-patch14',
@@ -157,7 +233,6 @@ def main():
     # load pretrained weights
     # denoising_unet.load_state_dict(
     #     torch.load(config.denoising_unet_path, map_location="cpu"),
-    #     strict=False,
     # )
     # reference_unet.load_state_dict(
     #     torch.load(config.reference_unet_path, map_location="cpu"),
@@ -166,16 +241,16 @@ def main():
     #     torch.load(config.pose_guider_path, map_location="cpu"),
     # )
 
-    # trained_net = Net(
-    #     reference_unet,
-    #     denoising_unet,
-    #     pose_guider,
-    #     None,
-    #     None,
-    # )
+    trained_net = Net(
+        reference_unet,
+        denoising_unet,
+        pose_guider,
+        None,
+        None,
+    )
 
-    # trained_net_state_dict = load_file(config.ckpt_tuned_path)
-    # trained_net.load_state_dict(trained_net_state_dict)
+    trained_net_state_dict = load_file(config.ckpt_tuned_path)
+    trained_net.load_state_dict(trained_net_state_dict)
 
     pipe = SDXLControl2ImagePipeline(
         vae=vae,
@@ -185,15 +260,17 @@ def main():
         unet=denoising_unet,
         pose_guider=pose_guider,
         scheduler=scheduler,
-        text_encoder=None,
-        text_encoder_2=None,
+        # text_encoder=None,
+        # text_encoder_2=None,
     )
     pipe = pipe.to("cuda", dtype=weight_dtype)
 
-    from controlnet_aux.hed import Network
-    from controlnet_aux import HEDdetector
-    hed_net = Network('/mnt/petrelfs/liuwenran/.cache/huggingface/hub/models--lllyasviel--Annotators/snapshots/982e7edaec38759d914a963c48c4726685de7d96/network-bsds500.pth')
-    hed_detector = HEDdetector(hed_net)
+    if 'control_type' in config.keys() and config.control_type == 'hed':
+        from controlnet_aux.hed import Network
+        from controlnet_aux import HEDdetector
+        hed_net = Network('/mnt/petrelfs/liuwenran/.cache/huggingface/hub/models--lllyasviel--Annotators/snapshots/982e7edaec38759d914a963c48c4726685de7d96/network-bsds500.pth')
+        hed_detector = HEDdetector(hed_net)
+    
 
     date_str = datetime.now().strftime("%Y%m%d")
     time_str = datetime.now().strftime("%H%M")
@@ -202,56 +279,93 @@ def main():
     save_dir = Path(f"output/debug_sdxl/{date_str}/{save_dir_name}")
     save_dir.mkdir(exist_ok=True, parents=True)
 
-    val_image_lines = open(config.validate_image_file).readlines()
-    val_control_image_lines = open(config.validate_control_image_file).readlines()
+    # val_image_lines = open(config.validate_image_file).readlines()
+    # val_control_image_lines = open(config.validate_control_image_file).readlines()
 
     width, height = args.W, args.H
-    width = 1024
-    height = 1024
+    # width = 1024
+    # height = 1024
+
+    data_root_path = '/mnt/petrelfs/liuwenran/repos/HumanAnimation'
+    ref_image_paths = [
+        f"{data_root_path}/inputs/reference/1.jpg",
+        f"{data_root_path}/inputs/reference/2.jpg",
+        f"{data_root_path}/inputs/reference/3.jpg",
+        f"{data_root_path}/inputs/reference/4.jpg",
+        f"{data_root_path}/inputs/reference/5.jpg",
+        f"{data_root_path}/inputs/reference/6.jpg",
+        f"{data_root_path}/inputs/reference/7.jpg",
+    ]
+    pose_image_paths = [
+        f"{data_root_path}/inputs/pose/p1.jpg",
+        f"{data_root_path}/inputs/pose/p2.jpg",
+        f"{data_root_path}/inputs/pose/p3.jpg",
+        f"{data_root_path}/inputs/pose/p4.jpg",
+        f"{data_root_path}/inputs/pose/p5.jpg",
+        f"{data_root_path}/inputs/pose/p6.jpg",
+        f"{data_root_path}/inputs/pose/p7.jpg",
+    ]
+
+    image_embeds = torch.load('results/prompt_embeds/prompt_embeds.pt', map_location='cpu')
+    image_embeds = image_embeds.to(device='cuda', dtype=torch.float16)
 
     pil_images = []
-    for ind in range(len(val_image_lines)):
-        image = val_image_lines[ind].strip()
-        ref_image_pil = Image.open(image).convert("RGB")
-        ref_image_width, ref_image_height = ref_image_pil.size
-        if ref_image_width > ref_image_height:
-            width = args.H
-            height = args.W
+    for ref_image_path in ref_image_paths:
+        for pose_image_path in pose_image_paths:
+    # for index, (ref_image_path, pose_image_path) in enumerate(zip(ref_image_paths, pose_image_paths)):
+            pose_name = pose_image_path.split("/")[-1].replace(".jpg", "")
+            ref_name = ref_image_path.split("/")[-1].replace(".jpg", "")
+            ref_image_pil = Image.open(ref_image_path).convert("RGB")
+            pose_image_pil = Image.open(pose_image_path).convert("RGB") # 输入的pose
+            pose_image_align = align_pose(ref_image_path, pose_image_path) # align后的pose
 
-        control_image_line = val_control_image_lines[ind].strip()
-        control_image_pil = Image.open(control_image_line).convert("RGB")
-        control_image_pil = hed_detector(control_image_pil)
-        control_image_pil = control_image_pil.resize((width, height))
+            # image0 = pipe(
+            #     ref_image_pil,
+            #     pose_image_pil,
+            #     width=config.data.train_width,
+            #     height=config.data.train_height,
+            #     num_inference_steps=20,
+            #     guidance_scale=3.5,
+            #     generator=generator,
+            # ).images
 
-        image = pipe(
-            ref_image_pil,
-            control_image_pil,
-            width=width,
-            height=height,
-            num_inference_steps=20,
-            guidance_scale=3.5,
-            generator=generator,
-        ).images
-        # image = image[0].permute(1, 2, 0).cpu().numpy()  # (3, 512, 512)
-        image = image[0, :, 0].permute(1, 2, 0).cpu().numpy()  # (3, 512, 512)
-        print(f'image shape {image.shape}')
-        res_image_pil = Image.fromarray((image * 255).astype(np.uint8))
-        # Save ref_image, src_image and the generated_image
-        w, h = res_image_pil.size
-        canvas = Image.new("RGB", (w * 3, h), "white")
-        ref_image_pil = ref_image_pil.resize((w, h))
-        control_image_pil = control_image_pil.resize((w, h))
-        canvas.paste(ref_image_pil, (0, 0))
-        canvas.paste(control_image_pil, (w, 0))
-        canvas.paste(res_image_pil, (w * 2, 0))
+            image1 = pipe(
+                ref_image_pil,
+                pose_image_align,
+                width=width,
+                height=height,
+                num_inference_steps=20,
+                guidance_scale=3.5,
+                generator=generator,
+                image_embeds=image_embeds,
+                fusion_type=config.fusion_type,
+            ).images
 
-        pil_images.append({"name": f"{ind}", "img": canvas})
-    
-    for sample_id, sample_dict in enumerate(pil_images):
-        sample_name = sample_dict["name"]
-        img = sample_dict["img"]
-        out_file = f"{save_dir}/{sample_id}_{date_str}_{time_str}.png"
-        img.save(out_file)
+
+            # image0 = image0[0, :, 0].permute(1, 2, 0).cpu().numpy()  # (3, 512, 512)
+            # print("image shape:", image0.shape)
+            # res_image_pil0 = Image.fromarray((image0 * 255).astype(np.uint8))
+
+            image1 = image1[0, :, 0].permute(1, 2, 0).cpu().numpy()  # (3, 512, 512)
+            print("image shape:", image1.shape)
+            res_image_pil1 = Image.fromarray((image1 * 255).astype(np.uint8))
+
+            # Save ref_image, src_image and the generated_image
+            w, h = res_image_pil1.size
+            # w, h = ref_image_pil.size
+            canvas = Image.new("RGB", (w * 3, h), "white")
+            ref_image_pil = ref_image_pil.resize((w, h))
+            pose_image_pil = pose_image_pil.resize((w, h)) 
+            pose_image_align = pose_image_align.resize((w,h))
+            canvas.paste(ref_image_pil, (0, 0))
+            canvas.paste(pose_image_pil, (w, 0))
+            # canvas.paste(pose_image_align, (w * 2, 0))
+            # canvas.paste(res_image_pil0, (w * 3, 0))
+            canvas.paste(res_image_pil1, (w * 2, 0))
+
+            pil_images.append({"name": f"{ref_name}_{pose_name}", "img": canvas})
+            out_file = Path(f"{save_dir}/{ref_name}_{pose_name}.png")      
+            canvas.save(out_file)
 
 
 

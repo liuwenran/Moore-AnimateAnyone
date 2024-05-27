@@ -7,7 +7,8 @@ image_encoder_path: '/mnt/petrelfs/liuwenran/.cache/huggingface/hub/models--lamb
 # motion_module_path: "./pretrained_weights/motion_module.pth"
 
 # ckpt_tuned_path: '/mnt/petrelfs/liuwenran/forks/Moore-AnimateAnyone/exp_output/stage1/checkpoint-30000/model.safetensors'
-ckpt_tuned_path: '/mnt/petrelfs/liuwenran/forks/Moore-AnimateAnyone/exp_output/stage1_weiqishaonian/checkpoint-18000/model.safetensors'
+# ckpt_tuned_path: '/mnt/petrelfs/liuwenran/forks/Moore-AnimateAnyone/exp_output/stage1_weiqishaonian/checkpoint-18000/model.safetensors'
+ckpt_tuned_path: '/mnt/petrelfs/liuwenran/repos/HumanAnimation/exp_output/stage1_5100_hed/checkpoint-40000/model.safetensors'
 
 inference_config: 'configs/inference/inference_img.yaml'
 weight_dtype: 'fp16'
@@ -31,10 +32,10 @@ noise_scheduler_kwargs:
 
 sampler: DDIM 
 
-# first_ref_image: /mnt/petrelfs/liuwenran/datasets/cctv/changeface/shierchangsheng_test_7_mmagic_512/0001.png
-first_ref_image: /mnt/petrelfs/liuwenran/datasets/cctv/changeface/shierchangsheng_woman_ref/woman_ref_768.png
-# validate_control_image_file: /mnt/petrelfs/liuwenran/datasets/cctv/changeface/shierchangsheng_test_7.txt
-validate_control_image_file: /mnt/petrelfs/liuwenran/datasets/cctv/changeface/shierchangsheng_test_7_crop_woman.txt
-save_path: /mnt/petrelfs/liuwenran/datasets/cctv/changeface/shierchangsheng_moore_aa_crop_woman_512_weiqishaonian
+first_ref_image: /mnt/petrelfs/liuwenran/datasets/cctv/changeface/shierchangsheng_test_7_mmagic_512/0001.png
+# first_ref_image: /mnt/petrelfs/liuwenran/datasets/cctv/changeface/shierchangsheng_woman_ref/woman_ref_768.png
+validate_control_image_file: /mnt/petrelfs/liuwenran/datasets/cctv/changeface/shierchangsheng_test_7.txt
+# validate_control_image_file: /mnt/petrelfs/liuwenran/datasets/cctv/changeface/shierchangsheng_test_7_crop_woman.txt
+save_path: /mnt/petrelfs/liuwenran/datasets/cctv/changeface/shierchangsheng_moore_aa_crop_woman_512_weiqishaonian_combine5100
 
 

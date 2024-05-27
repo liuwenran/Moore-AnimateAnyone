@@ -1,0 +1,117 @@
+data:
+  train_bs: 1
+  train_width: 576
+  train_height: 1024
+
+  # Margin of frame indexes between ref and tgt images
+  sample_margin: 30
+  margin_strategy: far
+
+  vid_file: ['/mnt/petrelfs/share_data/liuwenran/pexels_dataset/pexels_frames_train_info/good_vids.txt',
+             '/mnt/petrelfs/share_data/liuwenran/cctv_datasets/cctv_realcap/realcap_videos_info/all_vids.txt',
+             '/mnt/petrelfs/share_data/liuwenran/ubc_dataset/info/all_vids.txt',
+             '/mnt/petrelfs/share_data/liuwenran/ubc_dataset_test/info/all_vids.txt',
+             '/mnt/petrelfs/share_data/liuwenran/TikTok/info/all_vids.txt',
+             '/mnt/petrelfs/share_data/liuwenran/douyin1/all_vids.txt',
+             '/mnt/petrelfs/share_data/liuwenran/douyin2/info/all_vids.txt',
+             '/mnt/petrelfs/share_data/liuwenran/mixamo_dataset/all_vids.txt']
+            #  '/mnt/petrelfs/share_data/liuwenran/pexels_dataset_horizontal/pexels_frames_train_info/train_vids.txt']
+  video_root_path: ['/mnt/petrelfs/share_data/liuwenran/pexels_dataset_25fps/pexels_frames_to_train',
+                    '/mnt/petrelfs/share_data/liuwenran/cctv_datasets/cctv_realcap/realcap_frames_train',
+                    '/mnt/petrelfs/share_data/fangyq/UBC_dataset/train_frame',
+                    '/mnt/petrelfs/share_data/fangyq/UBC_dataset/test_frame',
+                    '/mnt/petrelfs/share_data/fangyq/TikTok_data/images',
+                    '/mnt/petrelfs/share_data/fangyq/douyin_share/douyin1_train',
+                    '/mnt/petrelfs/share_data/liuwenran/douyin2/train_frames',
+                    '/mnt/petrelfs/share_data/fangyq/blender_dataset/blender_train']
+                    # '/mnt/petrelfs/share_data/liuwenran/pexels_dataset_horizontal/pexels_frames_train']
+  pose_root_path: ['/mnt/petrelfs/share_data/liuwenran/pexels_dataset_25fps/pexels_frames_to_train_pose',
+                  '/mnt/petrelfs/share_data/liuwenran/cctv_datasets/cctv_realcap/realcap_frames_pose',
+                  '/mnt/petrelfs/share_data/liuwenran/ubc_dataset/train_frames_dwpose',
+                  '/mnt/petrelfs/share_data/liuwenran/ubc_dataset_test/frames_dwpose',
+                  '/mnt/petrelfs/share_data/liuwenran/TikTok/train_frames_dwpose',
+                  '/mnt/petrelfs/share_data/fangyq/douyin_share/douyin1_dwpose',
+                  '/mnt/petrelfs/share_data/liuwenran/douyin2/train_frames_pose',
+                  '/mnt/petrelfs/share_data/fangyq/blender_dataset/blender_dwpose']
+                  # '/mnt/petrelfs/share_data/liuwenran/pexels_dataset_horizontal/pexels_frames_train_pose']
+  data_type: ['frames', 'frames', 'frames', 'frames', 'frames', 'frames', 'frames', 'frames']
+
+
+data2:
+  train_bs: 1
+  train_width: 1024
+  train_height: 576
+
+  # Margin of frame indexes between ref and tgt images
+  sample_margin: 30
+  margin_strategy: far
+
+  vid_file: ['/mnt/petrelfs/share_data/liuwenran/pexels_dataset_horizontal/pexels_frames_train_info/train_vids.txt']
+  video_root_path: ['/mnt/petrelfs/share_data/liuwenran/pexels_dataset_horizontal/pexels_frames_train']
+  pose_root_path: ['/mnt/petrelfs/share_data/liuwenran/pexels_dataset_horizontal/pexels_frames_train_pose']
+  data_type: ['frames']
+
+solver:
+  gradient_accumulation_steps: 1
+  mixed_precision: 'fp16'
+  enable_xformers_memory_efficient_attention: True 
+  gradient_checkpointing: False 
+  max_train_steps: 40000
+  max_grad_norm: 1.0
+  # lr
+  learning_rate: 1.0e-5
+  scale_lr: False 
+  lr_warmup_steps: 1
+  lr_scheduler: 'constant'
+
+  # optimizer
+  use_8bit_adam: True 
+  adam_beta1: 0.9
+  adam_beta2: 0.999
+  adam_weight_decay:  1.0e-2
+  adam_epsilon: 1.0e-8
+
+val:
+  do_validation: False
+  validation_steps: 200
+  validation_ref_images: /mnt/petrelfs/liuwenran/repos/HumanAnimation/data/stage1_validation/val_image.txt
+  validation_tgt_images: /mnt/petrelfs/liuwenran/repos/HumanAnimation/data/stage1_validation/val_pose.txt
+
+
+noise_scheduler_kwargs:
+  num_train_timesteps: 1000
+  beta_start:          0.00085
+  beta_end:            0.012
+  beta_schedule:       "scaled_linear"
+  steps_offset:        1
+  clip_sample:         false
+
+base_model_path: '/mnt/petrelfs/liuwenran/.cache/huggingface/hub/models--stabilityai--stable-diffusion-xl-base-1.0/snapshots/462165984030d82259a11f4367a4eed129e94a7b'
+vae_model_path: '/mnt/petrelfs/liuwenran/.cache/huggingface/hub/models--madebyollin--sdxl-vae-fp16-fix/snapshots/4df413ca49271c25289a6482ab97a433f8117d15'
+# image_encoder_path: 'openai/clip-vit-large-patch14'
+image_encoder_path: '/mnt/petrelfs/liuwenran/.cache/huggingface/hub/models--openai--clip-vit-large-patch14/snapshots/32bd64288804d66eefd0ccbe215aa642df71cc41'
+# image_encoder_2_path: 'laion/CLIP-ViT-bigG-14-laion2B-39B-b160k'
+image_encoder_2_path: '/mnt/petrelfs/liuwenran/.cache/huggingface/hub/models--laion--CLIP-ViT-bigG-14-laion2B-39B-b160k/snapshots/bc7788f151930d91b58474715fdce5524ad9a189'
+# controlnet_openpose_path: '/mnt/petrelfs/liuwenran/.cache/huggingface/hub/models--lllyasviel--control_v11p_sd15_openpose/snapshots/9ae9f970358db89e211b87c915f9535c6686d5ba/diffusion_pytorch_model.safetensors'
+controlnet_openpose_path: '/mnt/petrelfs/liuwenran/.cache/huggingface/hub/models--thibaud--controlnet-openpose-sdxl-1.0/snapshots/1db673ed3dad75181fcf2e24f827597fe34e97b7/diffusion_pytorch_model.bin'
+controlnet_canny_path: '/mnt/petrelfs/liuwenran/.cache/huggingface/hub/models--diffusers--controlnet-canny-sdxl-1.0/snapshots/6c57eef07b4f634ede41bc560e5f3e2a321639ae/diffusion_pytorch_model.safetensors'
+# controlnet_hed_path: '/mnt/petrelfs/liuwenran/.cache/huggingface/hub/models--lllyasviel--control_v11p_sd15_softedge/snapshots/b5bcad0c48e9b12f091968cf5eadbb89402d6bc9/diffusion_pytorch_model.safetensors'
+
+weight_dtype: 'fp16'  # [fp16, fp32]
+uncond_ratio: 0.1
+noise_offset: 0.05
+snr_gamma: 5.0
+enable_zero_snr: True 
+pose_guider_pretrain: True
+wo_img_embed: True
+control_type: pose
+
+tune_denoising_unet: True
+fusion_type: 'downmid-up0a0'
+
+seed: 12580
+resume_from_checkpoint: '/mnt/petrelfs/liuwenran/forks/Moore-AnimateAnyone/exp_output/stage1_sdxl_5100_tuneall_downmid-up0a0'
+checkpointing_steps: 2000
+save_model_epoch_interval: 5
+exp_name: 'stage1_sdxl_5100_tuneall_downmid-up0a0'
+output_dir: './exp_output'  

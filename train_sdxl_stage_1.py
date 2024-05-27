@@ -40,6 +40,9 @@ from src.models.unet_2d_condition import UNet2DConditionModel
 from src.models.unet_3d import UNet3DConditionModel
 from src.pipelines.pipeline_sdxl_control2img import SDXLControl2ImagePipeline
 from src.utils.util import delete_additional_ckpt, import_filename, seed_everything
+from src.dataset.animation_image_combine import AnimationImageCombineDataset
+from torch.utils.data.dataset import ConcatDataset
+from src.dataset.multi_task_batch_sampler import BatchSchedulerSampler
 
 warnings.filterwarnings("ignore")
 
@@ -81,20 +84,20 @@ class Net(nn.Module):
         if clip_image_embeds is not None and clip_image_embeds_2 is not None:
             image_embeds = torch.concat([clip_image_embeds, clip_image_embeds_2], dim=-1)
         else:
-            image_embeds = torch.load('results/prompt_embeds/prompt_embeds.pt')
+            image_embeds = torch.load('results/prompt_embeds/prompt_embeds.pt', map_location='cpu')
             image_embeds = image_embeds.to(device='cuda', dtype=torch.float16)
             bs = noisy_latents.shape[0]
             image_embeds = image_embeds.repeat((bs, 1, 1))
 
-        if not uncond_fwd:
-            ref_timesteps = torch.zeros_like(timesteps)
-            self.reference_unet(
-                ref_image_latents,
-                ref_timesteps,
-                encoder_hidden_states=image_embeds,
-                return_dict=False,
-            )
-            self.reference_control_reader.update(self.reference_control_writer)
+        # if not uncond_fwd:
+        ref_timesteps = torch.zeros_like(timesteps)
+        self.reference_unet(
+            ref_image_latents,
+            ref_timesteps,
+            encoder_hidden_states=image_embeds,
+            return_dict=False,
+        )
+        self.reference_control_reader.update(self.reference_control_writer)
 
         model_pred = self.denoising_unet(
             noisy_latents,
@@ -146,7 +149,8 @@ def log_validation(
     accelerator,
     width,
     height,
-    control_type='canny'
+    control_type='canny',
+    fusion_type='full'
 ):
     logger.info("Running validation... ")
 
@@ -182,64 +186,76 @@ def log_validation(
     ref_image_paths = open(args.val.validation_ref_images, 'r').readlines()
     tgt_image_paths = open(args.val.validation_tgt_images, 'r').readlines()
 
-    if control_type == 'hed':
+    if control_type == 'pose':
+        # pose_detector = DWposeDetector()
+        # pose_detector.to(accelerator.device)
+        pass
+    elif control_type == 'hed':
         from controlnet_aux.hed import Network
         from controlnet_aux import HEDdetector
         hed_net = Network('/mnt/petrelfs/liuwenran/.cache/huggingface/hub/models--lllyasviel--Annotators/snapshots/982e7edaec38759d914a963c48c4726685de7d96/network-bsds500.pth')
         hed_detector = HEDdetector(hed_net)
+    else:
+        raise Exception('unexpected control_type')
 
     pil_images = []
     for ind in range(len(ref_image_paths)):
-        ref_image_path = ref_image_paths[ind].strip()
-        tgt_image_path = tgt_image_paths[ind].strip()
+        for tgt_ind in range(len(tgt_image_paths)):
+            if tgt_ind > 0:
+                break
+            ref_image_path = ref_image_paths[ind].strip()
+            tgt_image_path = tgt_image_paths[tgt_ind].strip()
 
-        ref_name = ref_image_path.split("/")[-1].split('.')[0]
-        tgt_name = tgt_image_path.split("/")[-1].split('.')[0]
-        ref_image_pil = Image.open(ref_image_path).convert("RGB")
-        tgt_image_pil = Image.open(tgt_image_path).convert("RGB")
+            ref_name = ref_image_path.split("/")[-1].split('.')[0]
+            tgt_name = tgt_image_path.split("/")[-1].split('.')[0]
+            ref_image_pil = Image.open(ref_image_path).convert("RGB")
+            tgt_image_pil = Image.open(tgt_image_path).convert("RGB")
+            
+            if control_type == 'pose':
+                control_image = tgt_image_pil
+            elif control_type == 'canny':
+                control_image = np.array(tgt_image_pil)
+                control_image = cv2.Canny(control_image, 100, 200)
+                control_image = control_image[:, :, None]
+                control_image = np.concatenate([control_image, control_image, control_image], axis=2)
+                control_image = Image.fromarray(control_image)
+            elif control_type == 'hed':
+                control_image = hed_detector(tgt_image_pil)
+            else:
+                print('control type not supported.')
+                import sys
+                sys.exit()
+            control_image = control_image.resize((width, height))
         
-        if control_type == 'canny':
-            control_image = np.array(tgt_image_pil)
-            control_image = cv2.Canny(control_image, 100, 200)
-            control_image = control_image[:, :, None]
-            control_image = np.concatenate([control_image, control_image, control_image], axis=2)
-            control_image = Image.fromarray(control_image)
-        elif control_type == 'hed':
-            control_image = hed_detector(tgt_image_pil)
-        else:
-            print('control type not supported.')
-            import sys
-            sys.exit()
-        control_image = control_image.resize((width, height))
-    
-        if image_enc is None and image_enc_2 is None:
-            image_embeds = torch.load('results/prompt_embeds/prompt_embeds.pt')
-            image_embeds = image_embeds.to(device='cuda', dtype=torch.float16)
-        else:
-            image_embeds = None
+            if image_enc is None and image_enc_2 is None:
+                image_embeds = torch.load('results/prompt_embeds/prompt_embeds.pt', map_location='cpu')
+                image_embeds = image_embeds.to(device='cuda', dtype=torch.float16)
+            else:
+                image_embeds = None
 
-        image = pipe(
-            ref_image_pil,
-            control_image,
-            width=width,
-            height=height,
-            num_inference_steps=20,
-            guidance_scale=3.5,
-            generator=generator,
-            image_embeds=image_embeds
-        ).images
-        image = image[0, :, 0].permute(1, 2, 0).cpu().numpy()  # (3, 512, 512)
-        res_image_pil = Image.fromarray((image * 255).astype(np.uint8))
-        # Save ref_image, src_image and the generated_image
-        w, h = res_image_pil.size
-        canvas = Image.new("RGB", (w * 3, h), "white")
-        ref_image_pil = ref_image_pil.resize((w, h))
-        control_image = control_image.resize((w, h))
-        canvas.paste(ref_image_pil, (0, 0))
-        canvas.paste(control_image, (w, 0))
-        canvas.paste(res_image_pil, (w * 2, 0))
+            image = pipe(
+                ref_image_pil,
+                control_image,
+                width=width,
+                height=height,
+                num_inference_steps=20,
+                guidance_scale=2,
+                generator=generator,
+                image_embeds=image_embeds,
+                fusion_type=fusion_type
+            ).images
+            image = image[0, :, 0].permute(1, 2, 0).cpu().numpy()  # (3, 512, 512)
+            res_image_pil = Image.fromarray((image * 255).astype(np.uint8))
+            # Save ref_image, src_image and the generated_image
+            w, h = res_image_pil.size
+            canvas = Image.new("RGB", (w * 3, h), "white")
+            ref_image_pil = ref_image_pil.resize((w, h))
+            control_image = control_image.resize((w, h))
+            canvas.paste(ref_image_pil, (0, 0))
+            canvas.paste(control_image, (w, 0))
+            canvas.paste(res_image_pil, (w * 2, 0))
 
-        pil_images.append({"name": f"{ref_name}_{tgt_name}", "img": canvas})
+            pil_images.append({"name": f"{ref_name}_{tgt_name}", "img": canvas})
 
     vae = vae.to(dtype=torch.float16)
     if not args.wo_img_embed:
@@ -321,6 +337,9 @@ def main(cfg):
         },
     ).to(device="cuda")
 
+    if 'fusion_type' not in cfg.keys() or cfg.fusion_type is None:
+        cfg.fusion_type = 'full'
+
     if not cfg.wo_img_embed:
         image_enc = CLIPVisionModelWithProjection.from_pretrained(
             cfg.image_encoder_path,
@@ -338,8 +357,11 @@ def main(cfg):
             conditioning_embedding_channels=320, block_out_channels=(16, 32, 96, 256)
         ).to(device="cuda")
         # load pretrained controlnet-openpose params for pose_guider
-        controlnet_openpose_state_dict = load_file(cfg.controlnet_canny_path)
-        # controlnet_openpose_state_dict = torch.load(cfg.controlnet_openpose_path)
+        if cfg.control_type == 'pose':
+            # controlnet_openpose_state_dict = load_file(cfg.controlnet_openpose_path)
+            controlnet_openpose_state_dict = torch.load(cfg.controlnet_openpose_path, map_location='cpu')
+        elif cfg.control_type == 'hed':
+            controlnet_openpose_state_dict = load_file(cfg.controlnet_hed_path)
         state_dict_to_load = {}
         for k in controlnet_openpose_state_dict.keys():
             if k.startswith("controlnet_cond_embedding.") and k.find("conv_out") < 0:
@@ -359,20 +381,36 @@ def main(cfg):
         image_enc_2.requires_grad_(False)
 
     # Explictly declare training models
-    if 'tune_denoising_unet' in config.keys() and config.tune_denoising_unet:
+    if 'tune_denoising_unet' in cfg.keys() and cfg.tune_denoising_unet:
         denoising_unet.requires_grad_(True)
     else:
         denoising_unet.requires_grad_(False)
 
     #  Some top layer parames of reference_unet don't need grad
-    if 'tune_denoising_unet' in config.keys() and config.tune_denoising_unet:
-        for name, param in reference_unet.named_parameters():
+    # if 'tune_denoising_unet' in config.keys() and config.tune_denoising_unet:
+    #     for name, param in reference_unet.named_parameters():
+    #         param.requires_grad_(False)
+    # else:
+    for name, param in reference_unet.named_parameters():
+        if "up_blocks.2" in name:
             param.requires_grad_(False)
-    else:
+        else:
+            param.requires_grad_(True)
+
+    if cfg.fusion_type == 'midup-low':
         for name, param in reference_unet.named_parameters():
-            if "up_blocks.2" in name:
+            if "up_blocks.1" in name:
                 param.requires_grad_(False)
-            else:
+    elif cfg.fusion_type == 'mid' or cfg.fusion_type == 'middown':
+        for name, param in reference_unet.named_parameters():
+            if "up_blocks.1" in name or "up_blocks.0" in name:
+                param.requires_grad_(False)
+    elif cfg.fusion_type == 'downmid-up0a0':
+        for name, param in reference_unet.named_parameters():
+            if "up_blocks.1" in name or "up_blocks.0" in name:
+                param.requires_grad_(False)
+        for name, param in reference_unet.named_parameters():
+            if "up_blocks.0.attentions.0" in name:
                 param.requires_grad_(True)
 
     if not cfg.wo_img_embed:
@@ -392,13 +430,13 @@ def main(cfg):
         reference_unet,
         do_classifier_free_guidance=False,
         mode="write",
-        fusion_blocks="full",
+        fusion_blocks=cfg.fusion_type,
     )
     reference_control_reader = ReferenceAttentionControl(
         denoising_unet,
         do_classifier_free_guidance=False,
         mode="read",
-        fusion_blocks="full",
+        fusion_blocks=cfg.fusion_type,
     )
 
     net = Net(
@@ -423,6 +461,7 @@ def main(cfg):
             )
 
     if cfg.solver.gradient_checkpointing:
+        # pose_guider.enable_gradient_checkpointing()
         reference_unet.enable_gradient_checkpointing()
         denoising_unet.enable_gradient_checkpointing()
 
@@ -474,10 +513,20 @@ def main(cfg):
     #     data_meta_paths=cfg.data.meta_paths,
     #     sample_margin=cfg.data.sample_margin,
     # )
-    train_dataset = AnimationDataset(args=cfg.data, images_file=cfg.data.images_file, img_size=(cfg.data.train_height, cfg.data.train_width), control_type=cfg.data.control_type)
+    # train_dataset = AnimationDataset(args=cfg.data, images_file=cfg.data.images_file, img_size=(cfg.data.train_height, cfg.data.train_width), control_type=cfg.data.control_type)
+
+    # train_dataloader = torch.utils.data.DataLoader(
+    #     train_dataset, batch_size=cfg.data.train_bs, shuffle=True, num_workers=4
+    # )
+
+
+    dataset1 = AnimationImageCombineDataset(data_config=cfg.data, img_size=(cfg.data.train_width, cfg.data.train_height), control_type=cfg.control_type)
+    dataset2 = AnimationImageCombineDataset(data_config=cfg.data2, img_size=(cfg.data2.train_width, cfg.data2.train_height), control_type=cfg.control_type)
+
+    train_dataset = ConcatDataset([dataset1, dataset2])
 
     train_dataloader = torch.utils.data.DataLoader(
-        train_dataset, batch_size=cfg.data.train_bs, shuffle=True, num_workers=4
+        train_dataset, batch_size=cfg.data.train_bs, sampler=BatchSchedulerSampler(train_dataset, batch_size=cfg.data.train_bs), shuffle=False, num_workers=4
     )
 
     # Prepare everything with our `accelerator`.
@@ -705,11 +754,33 @@ def main(cfg):
                 train_loss = 0.0
                 if global_step % cfg.checkpointing_steps == 0:
                     if accelerator.is_main_process:
+                        # unwrap_net = accelerator.unwrap_model(net)
+                        # save_checkpoint(
+                        #     unwrap_net.reference_unet,
+                        #     save_dir,
+                        #     "reference_unet",
+                        #     global_step,
+                        #     total_limit=3,
+                        # )
+                        # save_checkpoint(
+                        #     unwrap_net.denoising_unet,
+                        #     save_dir,
+                        #     "denoising_unet",
+                        #     global_step,
+                        #     total_limit=3,
+                        # )
+                        # save_checkpoint(
+                        #     unwrap_net.pose_guider,
+                        #     save_dir,
+                        #     "pose_guider",
+                        #     global_step,
+                        #     total_limit=3,
+                        # )
                         save_path = os.path.join(save_dir, f"checkpoint-{global_step}")
                         delete_additional_ckpt(save_dir, 1)
                         accelerator.save_state(save_path)
 
-                if global_step == 1 or global_step % cfg.val.validation_steps == 0:
+                if cfg.val.do_validation and (global_step == 1 or global_step % cfg.val.validation_steps == 0):
                 # if global_step % cfg.val.validation_steps == 0:
                     if accelerator.is_main_process:
                         generator = torch.Generator(device=accelerator.device)
@@ -725,11 +796,12 @@ def main(cfg):
                             accelerator=accelerator,
                             width=cfg.data.train_width,
                             height=cfg.data.train_height,
-                            control_type=cfg.data.control_type
+                            control_type=cfg.control_type,
+                            fusion_type=cfg.fusion_type
                         )
 
-                        reference_control_reader.register_reference_hooks('read', do_classifier_free_guidance=False, fusion_blocks="full")
-                        reference_control_writer.register_reference_hooks('write', do_classifier_free_guidance=False, fusion_blocks="full")
+                        reference_control_reader.register_reference_hooks('read', do_classifier_free_guidance=False, fusion_blocks=cfg.fusion_type)
+                        reference_control_writer.register_reference_hooks('write', do_classifier_free_guidance=False, fusion_blocks=cfg.fusion_type)
 
                         val_save_dir = os.path.join(save_dir, 'val')
                         if not os.path.exists(val_save_dir):

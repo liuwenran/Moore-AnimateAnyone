@@ -114,6 +114,8 @@ class SDXLControl2ImagePipeline(
         unet,
         pose_guider,
         scheduler: KarrasDiffusionSchedulers,
+        text_encoder=None,
+        text_encoder_2=None,
         feature_extractor: CLIPImageProcessor = None,
         force_zeros_for_empty_prompt: bool = True,
     ):
@@ -126,6 +128,8 @@ class SDXLControl2ImagePipeline(
             scheduler=scheduler,
             image_encoder=image_encoder,
             image_encoder_2=image_encoder_2,
+            text_encoder=text_encoder,
+            text_encoder_2=text_encoder_2,
             pose_guider=pose_guider,
             feature_extractor=feature_extractor,
         )
@@ -213,6 +217,15 @@ class SDXLControl2ImagePipeline(
         # we always cast to float32 as this does not cause significant overhead and is compatible with bfloa16
         video = video.cpu().float().numpy()
         return video
+
+    def decode_latents_image(self, latents):
+        video_length = latents.shape[2]
+        latents = 1 / self.vae.config.scaling_factor * latents
+        latents = self.vae.decode(latents).sample
+        latents = (latents / 2 + 0.5).clamp(0, 1)
+        # we always cast to float32 as this does not cause significant overhead and is compatible with bfloa16
+        latents = latents.cpu().float().numpy()
+        return latents
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.prepare_extra_step_kwargs
     def prepare_extra_step_kwargs(self, generator, eta):
@@ -364,8 +377,6 @@ class SDXLControl2ImagePipeline(
         crops_coords_top_left: Tuple[int, int] = (0, 0),
         target_size: Optional[Tuple[int, int]] = None,
         clip_skip: Optional[int] = None,
-        image_embeds: Optional[torch.FloatTensor] = None,
-        fusion_type: Optional[str] = 'full',
         **kwargs,
     ):
         # 0. Default height and width to unet
@@ -393,29 +404,25 @@ class SDXLControl2ImagePipeline(
             do_classifier_free_guidance=self.do_classifier_free_guidance,
             mode="write",
             batch_size=batch_size,
-            fusion_blocks=fusion_type,
+            fusion_blocks="full",
         )
         reference_control_reader = ReferenceAttentionControl(
             self.unet,
             do_classifier_free_guidance=self.do_classifier_free_guidance,
             mode="read",
             batch_size=batch_size,
-            fusion_blocks=fusion_type,
+            fusion_blocks="full",
         )
 
         # 4. Prepare timesteps
         timesteps, num_inference_steps = retrieve_timesteps(self.scheduler, num_inference_steps, device, timesteps)
 
-        if image_embeds is not None:
-            image_embeds = image_embeds.to(device=device, dtype=self.unet.dtype)
-            negative_image_embeds = torch.zeros_like(image_embeds)
-        else:
-            image_embeds, negative_image_embeds = self.encode_image(ref_image, device, num_images_per_prompt)
-            image_embeds = image_embeds.unsqueeze(1)
-            negative_image_embeds = negative_image_embeds.unsqueeze(1)
-        if self.do_classifier_free_guidance:
-            image_embeds = torch.cat([negative_image_embeds, image_embeds])
-            image_embeds = image_embeds.to(device)
+        # image_embeds, negative_image_embeds = self.encode_image(ref_image, device, num_images_per_prompt)
+        # image_embeds = image_embeds.unsqueeze(1)
+        # negative_image_embeds = negative_image_embeds.unsqueeze(1)
+        # if self.do_classifier_free_guidance:
+        #     image_embeds = torch.cat([negative_image_embeds, image_embeds])
+        #     image_embeds = image_embeds.to(device)
 
         # 5. Prepare latent variables
         num_channels_latents = self.unet.config.in_channels
@@ -424,7 +431,7 @@ class SDXLControl2ImagePipeline(
             num_channels_latents,
             height,
             width,
-            image_embeds.dtype,
+            self.vae.dtype,
             device,
             generator,
             latents,
@@ -483,6 +490,11 @@ class SDXLControl2ImagePipeline(
         #         guidance_scale_tensor, embedding_dim=self.unet.config.time_cond_proj_dim
         #     ).to(device=device, dtype=latents.dtype)
 
+        image_embeds = torch.load('results/prompt_embeds/prompt_embeds_before_unet.pt')
+        image_embeds = image_embeds.to(
+            device=device, dtype=self.pose_guider.dtype
+        )
+
         self._num_timesteps = len(timesteps)
         with self.progress_bar(total=num_inference_steps) as progress_bar:
             for i, t in enumerate(timesteps):
@@ -508,6 +520,16 @@ class SDXLControl2ImagePipeline(
 
                 # predict the noise residual
                 # added_cond_kwargs = {"time_ids": add_time_ids}
+                # noise_pred = self.unet(
+                #     latent_model_input,
+                #     t,
+                #     encoder_hidden_states=image_embeds,
+                #     # timestep_cond=timestep_cond,
+                #     # cross_attention_kwargs=self.cross_attention_kwargs,
+                #     # added_cond_kwargs=added_cond_kwargs,
+                #     return_dict=False,
+                # )[0]
+                
                 noise_pred = self.unet(
                     latent_model_input,
                     t,
@@ -537,6 +559,7 @@ class SDXLControl2ImagePipeline(
             reference_control_writer.clear()
 
         # Post-processing
+        # image = self.decode_latents_image(latents)  # (b, c, 1, h, w)
         image = self.decode_latents(latents)  # (b, c, 1, h, w)
 
         # Convert to tensor

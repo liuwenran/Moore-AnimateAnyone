@@ -124,10 +124,8 @@ def main():
     )
     pipe = pipe.to("cuda", dtype=weight_dtype)
 
-    from controlnet_aux.hed import Network
     from controlnet_aux import HEDdetector
-    hed_net = Network('/mnt/petrelfs/liuwenran/.cache/huggingface/hub/models--lllyasviel--Annotators/snapshots/982e7edaec38759d914a963c48c4726685de7d96/network-bsds500.pth')
-    hed_detector = HEDdetector(hed_net)
+    hed_detector = HEDdetector.from_pretrained('/mnt/petrelfs/liuwenran/.cache/huggingface/hub/models--lllyasviel--Annotators/snapshots/982e7edaec38759d914a963c48c4726685de7d96')
 
     save_dir = Path(config.save_path)
     save_dir.mkdir(exist_ok=True, parents=True)

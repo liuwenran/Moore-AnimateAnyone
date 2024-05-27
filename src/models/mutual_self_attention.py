@@ -33,7 +33,7 @@ class ReferenceAttentionControl:
         # 10. Modify self attention and group norm
         self.unet = unet
         assert mode in ["read", "write"]
-        assert fusion_blocks in ["midup", "full"]
+        assert fusion_blocks in ["midup", "full", "midup-low", "mid", "middown", "downmid-up0a0"]
         self.reference_attn = reference_attn
         self.reference_adain = reference_adain
         self.fusion_blocks = fusion_blocks
@@ -282,6 +282,43 @@ class ReferenceAttentionControl:
                     if isinstance(module, BasicTransformerBlock)
                     or isinstance(module, TemporalBasicTransformerBlock)
                 ]
+            elif self.fusion_blocks == "midup-low":
+                attn_modules = [
+                    module
+                    for module in (
+                        torch_dfs(self.unet.mid_block) + torch_dfs(self.unet.up_blocks[0])
+                    )
+                    if isinstance(module, BasicTransformerBlock)
+                    or isinstance(module, TemporalBasicTransformerBlock)
+                ]
+            elif self.fusion_blocks == "mid":
+                attn_modules = [
+                    module
+                    for module in (
+                        torch_dfs(self.unet.mid_block) 
+                    )
+                    if isinstance(module, BasicTransformerBlock)
+                    or isinstance(module, TemporalBasicTransformerBlock)
+                ]
+            elif self.fusion_blocks == "middown":
+                attn_modules = [
+                    module
+                    for module in (
+                        torch_dfs(self.unet.mid_block) + torch_dfs(self.unet.down_blocks)
+                    )
+                    if isinstance(module, BasicTransformerBlock)
+                    or isinstance(module, TemporalBasicTransformerBlock)
+                ]
+            elif self.fusion_blocks == 'downmid-up0a0':
+                attn_modules = [
+                    module
+                    for module in (
+                        torch_dfs(self.unet.mid_block) + torch_dfs(self.unet.down_blocks) + torch_dfs(self.unet.up_blocks[0].attentions[0])
+                    )
+                    if isinstance(module, BasicTransformerBlock)
+                    or isinstance(module, TemporalBasicTransformerBlock)
+                ]
+
             attn_modules = sorted(
                 attn_modules, key=lambda x: -x.norm1.normalized_shape[0]
             )
@@ -329,6 +366,68 @@ class ReferenceAttentionControl:
                     for module in torch_dfs(writer.unet)
                     if isinstance(module, BasicTransformerBlock)
                 ]
+            elif self.fusion_blocks == "midup-low":
+                reader_attn_modules = [
+                    module
+                    for module in (
+                        torch_dfs(self.unet.mid_block) + torch_dfs(self.unet.up_blocks[0])
+                    )
+                    if isinstance(module, TemporalBasicTransformerBlock)
+                ]
+                writer_attn_modules = [
+                    module
+                    for module in (
+                        torch_dfs(writer.unet.mid_block)
+                        + torch_dfs(writer.unet.up_blocks[0])
+                    )
+                    if isinstance(module, BasicTransformerBlock)
+                ]
+            elif self.fusion_blocks == "mid":
+                reader_attn_modules = [
+                    module
+                    for module in (
+                        torch_dfs(self.unet.mid_block)
+                    )
+                    if isinstance(module, TemporalBasicTransformerBlock)
+                ]
+                writer_attn_modules = [
+                    module
+                    for module in (
+                        torch_dfs(writer.unet.mid_block)
+                    )
+                    if isinstance(module, BasicTransformerBlock)
+                ]
+            elif self.fusion_blocks == "middown":
+                reader_attn_modules = [
+                    module
+                    for module in (
+                        torch_dfs(self.unet.mid_block) + torch_dfs(self.unet.down_blocks)
+                    )
+                    if isinstance(module, TemporalBasicTransformerBlock)
+                ]
+                writer_attn_modules = [
+                    module
+                    for module in (
+                        torch_dfs(writer.unet.mid_block) + torch_dfs(writer.unet.down_blocks)
+                    )
+                    if isinstance(module, BasicTransformerBlock)
+                ]
+            elif self.fusion_blocks == 'downmid-up0a0':
+                reader_attn_modules = [
+                    module
+                    for module in (
+                        torch_dfs(self.unet.mid_block) + torch_dfs(self.unet.down_blocks) + torch_dfs(self.unet.up_blocks[0].attentions[0])
+                    )
+                    if isinstance(module, TemporalBasicTransformerBlock)
+                ]
+                writer_attn_modules = [
+                    module
+                    for module in (
+                        torch_dfs(writer.unet.mid_block) + torch_dfs(writer.unet.down_blocks) + torch_dfs(writer.unet.up_blocks[0].attentions[0])
+                    )
+                    if isinstance(module, BasicTransformerBlock)
+                ]
+
             reader_attn_modules = sorted(
                 reader_attn_modules, key=lambda x: -x.norm1.normalized_shape[0]
             )
@@ -357,6 +456,43 @@ class ReferenceAttentionControl:
                     if isinstance(module, BasicTransformerBlock)
                     or isinstance(module, TemporalBasicTransformerBlock)
                 ]
+            elif self.fusion_blocks == "midup-low":
+                reader_attn_modules = [
+                    module
+                    for module in (
+                        torch_dfs(self.unet.mid_block) + torch_dfs(self.unet.up_blocks[0])
+                    )
+                    if isinstance(module, BasicTransformerBlock)
+                    or isinstance(module, TemporalBasicTransformerBlock)
+                ]
+            elif self.fusion_blocks == "mid":
+                reader_attn_modules = [
+                    module
+                    for module in (
+                        torch_dfs(self.unet.mid_block)
+                    )
+                    if isinstance(module, BasicTransformerBlock)
+                    or isinstance(module, TemporalBasicTransformerBlock)
+                ]
+            elif self.fusion_blocks == "middown":
+                reader_attn_modules = [
+                    module
+                    for module in (
+                        torch_dfs(self.unet.mid_block) + torch_dfs(self.unet.down_blocks)
+                    )
+                    if isinstance(module, BasicTransformerBlock)
+                    or isinstance(module, TemporalBasicTransformerBlock)
+                ]
+            elif self.fusion_blocks == "downmid-up0a0":
+                reader_attn_modules = [
+                    module
+                    for module in (
+                        torch_dfs(self.unet.mid_block) + torch_dfs(self.unet.down_blocks) + torch_dfs(self.unet.up_blocks[0].attentions[0])
+                    )
+                    if isinstance(module, BasicTransformerBlock)
+                    or isinstance(module, TemporalBasicTransformerBlock)
+                ]
+
             reader_attn_modules = sorted(
                 reader_attn_modules, key=lambda x: -x.norm1.normalized_shape[0]
             )

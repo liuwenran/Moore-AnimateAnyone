@@ -8,6 +8,17 @@ image_encoder_path: '/mnt/petrelfs/liuwenran/.cache/huggingface/hub/models--h94-
 
 # ckpt_tuned_path: '/mnt/petrelfs/liuwenran/forks/Moore-AnimateAnyone/exp_output/stage1/checkpoint-30000/model.safetensors'
 # ckpt_tuned_path: '/mnt/petrelfs/liuwenran/forks/Moore-AnimateAnyone/exp_output/stage1_weiqishaonian/checkpoint-20000/model.safetensors'
+# ckpt_tuned_path: '/mnt/petrelfs/liuwenran/forks/Moore-AnimateAnyone/exp_output/stage1_sdxl_5100_tune_denoising/checkpoint-30000/model.safetensors'
+# ckpt_tuned_path: '/mnt/petrelfs/liuwenran/forks/Moore-AnimateAnyone/exp_output/stage1_sdxl_5100/checkpoint-30000/model.safetensors'
+# ckpt_tuned_path: '/mnt/petrelfs/liuwenran/forks/Moore-AnimateAnyone/exp_output/stage1_sdxl_5100_tuneall/checkpoint-40000/model.safetensors'
+ckpt_tuned_path: '/mnt/petrelfs/liuwenran/forks/Moore-AnimateAnyone/exp_output/stage1_sdxl_5100_tuneall_downmid-up0a0/checkpoint-40000/model.safetensors'
+
+# denoising_unet_path: /mnt/petrelfs/liuwenran/forks/Moore-AnimateAnyone/exp_output/stage1_sdxl_5100_tune_denoising/denoising_unet-28890.pth
+# reference_unet_path: /mnt/petrelfs/liuwenran/forks/Moore-AnimateAnyone/exp_output/stage1_sdxl_5100_tune_denoising/reference_unet-28890.pth
+# pose_guider_path: /mnt/petrelfs/liuwenran/forks/Moore-AnimateAnyone/exp_output/stage1_sdxl_5100_tune_denoising/pose_guider-28890.pth
+# denoising_unet_path: /mnt/petrelfs/liuwenran/forks/Moore-AnimateAnyone/exp_output/stage1_sdxl_5100_tuneall/denoising_unet-6410.pth
+# reference_unet_path: /mnt/petrelfs/liuwenran/forks/Moore-AnimateAnyone/exp_output/stage1_sdxl_5100_tuneall/reference_unet-6410.pth
+# pose_guider_path: /mnt/petrelfs/liuwenran/forks/Moore-AnimateAnyone/exp_output/stage1_sdxl_5100_tuneall/pose_guider-6410.pth
 
 weight_dtype: 'fp16'
 
@@ -33,4 +44,4 @@ sampler: DDIM
 validate_image_file: /mnt/petrelfs/liuwenran/forks/Moore-AnimateAnyone/data/validate_pair_images.txt
 validate_control_image_file: /mnt/petrelfs/liuwenran/forks/Moore-AnimateAnyone/data/validate_pair_images_part_two.txt
 
-
+fusion_type: 'downmid-up0a0'
