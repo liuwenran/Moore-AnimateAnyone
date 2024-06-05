@@ -126,3 +126,13 @@ def get_fps(video_path):
     fps = video_stream.average_rate
     container.close()
     return fps
+
+
+def save_image_grid(images: torch.Tensor, path: str, n_rows=6):
+    images = torchvision.utils.make_grid(images, nrow=n_rows)  # (c h w)
+    images = images.transpose(0, 1).transpose(1, 2).squeeze(-1)  # (h w c)
+    images = (images * 255).numpy().astype(np.uint8)
+    images = Image.fromarray(images)
+
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    images.save(path)

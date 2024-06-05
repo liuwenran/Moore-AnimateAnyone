@@ -60,3 +60,26 @@ def face_image(frame, save_path=None):
     if save_path is not None:
         cv2.imwrite(save_path, frame)
     return frame, face_lms
+
+if __name__ == '__main__':
+    img_lines = open('/mnt/petrelfs/liuwenran/datasets/moore_test_case/redbook/redbook_pose_half.txt').read().splitlines()
+    save_dir = '/mnt/petrelfs/liuwenran/datasets/moore_test_case/redbook/redbook_pose_half_crop'
+
+    for ind, line in enumerate(img_lines):
+        print(f'ind {ind} in {len(img_lines)}')
+        img_name = line.split('/')[-1]
+        img_id = img_name.split('.')[0]
+        driving_img = cv2.imread(line)
+        frame, face_lms = face_image(driving_img)
+        min_loc = np.min(face_lms, axis=0)
+        max_loc = np.max(face_lms, axis=0)
+        min_x, min_y = int(min_loc[0]), int(min_loc[1])
+        max_x, max_y = int(max_loc[0]), int(max_loc[1])
+        x_sub = max_x - min_x
+        y_sub = max_y - min_y
+        x_start = min_x - int((512 - x_sub)/2)
+        y_start = min_y - int((512 - y_sub)/2)
+        driving_img_crop = driving_img[x_start:x_start+512, y_start:y_start+512, :]
+        crop_start_position = np.array([y_start, x_start])
+        cv2.imwrite(os.path.join(save_dir, img_name), driving_img_crop)
+        np.save(os.path.join(save_dir, img_id + '.npy'), crop_start_position)
