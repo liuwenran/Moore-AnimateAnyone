@@ -24,45 +24,128 @@ import numpy as np
 from metrics.utils.fvd import calculate_fvd, load_i3d_pretrained
 from datetime import datetime
 
+tiktok_gt_video_dir = '/mnt/hwfile/mm_lol/fangyq/share_data/tiktok_video'
+pexels_h_gt_video_dir = '/mnt/hwfile/mm_lol/liuwenran/pexels-test-case/pexels-test-h/videos'
+pexels_v_gt_video_dir = '/mnt/hwfile/mm_lol/liuwenran/pexels-test-case/pexels-test-v/videos'
 
 # moore results
 # dataset_name = 'pexels-test-h'
 # res_video_root_path = '/mnt/petrelfs/liuwenran/forks/Moore-AnimateAnyone/output/20240604/2056--video_pexels-h--seed_42-768x768'
-# gt_video_root_path = '/mnt/hwfile/mm_lol/liuwenran/pexels-test-case/pexels-test-h/videos'
+# gt_video_root_path = pexels_h_gt_video_dir
 
 # dataset_name = 'pexels-test-v'
 # res_video_root_path = '/mnt/petrelfs/liuwenran/forks/Moore-AnimateAnyone/output/20240604/2112--video_pexels-v--seed_42-768x768'
-# gt_video_root_path = '/mnt/hwfile/mm_lol/liuwenran/pexels-test-case/pexels-test-v/videos'
+# gt_video_root_path = pexels_v_gt_video_dir
 
 # dataset_name = 'tiktok'
 # res_video_root_path = '/mnt/petrelfs/liuwenran/forks/Moore-AnimateAnyone/output/20240604/2113--video_tiktok--seed_42-768x768'
-# gt_video_root_path = '/mnt/hwfile/mm_lol/fangyq/share_data/tiktok_video'
+# gt_video_root_path = tiktok_gt_video_dir
 
 # magic animate result
 # dataset_name = 'magic-animate_tiktok'
 # res_video_root_path = '/mnt/petrelfs/liuwenran/forks/magic-animate/samples/tiktok--2024-06-05T16-33-58'
-# gt_video_root_path = '/mnt/hwfile/mm_lol/fangyq/share_data/tiktok_video'
+# gt_video_root_path = tiktok_gt_video_dir
 
 # dataset_name = 'magic-animate_pexels-test-h'
 # res_video_root_path = '/mnt/petrelfs/liuwenran/forks/magic-animate/samples/pexels-h--2024-06-05T16-39-26'
-# gt_video_root_path = '/mnt/hwfile/mm_lol/liuwenran/pexels-test-case/pexels-test-h/videos'
+# gt_video_root_path = pexels_h_gt_video_dir
 
 # dataset_name = 'magic-animate_pexels-test-v'
 # res_video_root_path = '/mnt/petrelfs/liuwenran/forks/magic-animate/samples/pexels-v--2024-06-05T16-57-53'
-# gt_video_root_path = '/mnt/hwfile/mm_lol/liuwenran/pexels-test-case/pexels-test-v/videos'
+# gt_video_root_path = pexels_v_gt_video_dir
 
 # champ result
 # dataset_name = 'champ_tiktok'
 # res_video_root_path = '/mnt/petrelfs/liuwenran/repos/champ/results/tiktok-2024-06-05T12-05-19'
-# gt_video_root_path = '/mnt/hwfile/mm_lol/fangyq/share_data/tiktok_video'
+# gt_video_root_path = tiktok_gt_video_dir
 
 # dataset_name = 'champ_pexels-h'
 # res_video_root_path = '/mnt/petrelfs/liuwenran/repos/champ/results/pexels-h-2024-06-05T19-08-03'
-# gt_video_root_path = '/mnt/hwfile/mm_lol/liuwenran/pexels-test-case/pexels-test-h/videos'
+# gt_video_root_path = pexels_h_gt_video_dir
 
-dataset_name = 'champ_pexels-v'
-res_video_root_path = '/mnt/petrelfs/liuwenran/repos/champ/results/pexels-v-2024-06-05T21-58-38'
-gt_video_root_path = '/mnt/hwfile/mm_lol/liuwenran/pexels-test-case/pexels-test-v/videos'
+# dataset_name = 'champ_pexels-v'
+# res_video_root_path = '/mnt/petrelfs/liuwenran/repos/champ/results/pexels-v-2024-06-05T21-58-38'
+# gt_video_root_path = pexels_v_gt_video_dir
+
+# dataset_name = 'ours_ckpt1_tiktok'
+# res_video_root_path = '/mnt/petrelfs/liuwenran/forks/pexels-human/output/20240605-2143--ckpt1-tiktok'
+# gt_video_root_path = tiktok_gt_video_dir
+
+# dataset_name = 'ours_ckpt1_pexels-h'
+# res_video_root_path = '/mnt/petrelfs/liuwenran/forks/pexels-human/output/20240605-2153--ckpt1-pexels-h'
+# gt_video_root_path = pexels_h_gt_video_dir
+
+# dataset_name = 'ours_ckpt1_pexels-v'
+# res_video_root_path = '/mnt/petrelfs/liuwenran/forks/pexels-human/output/20240605-2157--ckpt1-pexels-v'
+# gt_video_root_path = pexels_v_gt_video_dir
+
+# dataset_name = 'ours_ckpt2_tioktok'
+# res_video_root_path = '/mnt/petrelfs/liuwenran/forks/pexels-human/output/20240605-2202--ckpt2-tiktok'
+# gt_video_root_path = tiktok_gt_video_dir
+
+# dataset_name = 'ours_ckpt2_pexels-h'
+# res_video_root_path = '/mnt/petrelfs/liuwenran/forks/pexels-human/output/20240605-2203--ckpt2-pexels-h'
+# gt_video_root_path = pexels_h_gt_video_dir
+
+# dataset_name = 'ours_ckpt2_pexels-v'
+# res_video_root_path = '/mnt/petrelfs/liuwenran/forks/pexels-human/output/20240605-2202--ckpt2-pexels-v'
+# gt_video_root_path = pexels_v_gt_video_dir
+
+# dataset_name = 'ours_ckpt3_tioktok'
+# res_video_root_path = '/mnt/petrelfs/liuwenran/forks/pexels-human/output/20240605-2203--ckpt3-tiktok'
+# gt_video_root_path = tiktok_gt_video_dir
+
+# dataset_name = 'ours_ckpt3_pexels-h'
+# res_video_root_path = '/mnt/petrelfs/liuwenran/forks/pexels-human/output/20240605-2204--ckpt3-pexels-h'
+# gt_video_root_path = pexels_h_gt_video_dir
+
+# dataset_name = 'ours_ckpt3_pexels-v'
+# res_video_root_path = '/mnt/petrelfs/liuwenran/forks/pexels-human/output/20240605-2203--ckpt3-pexels-v'
+# gt_video_root_path = pexels_v_gt_video_dir
+
+# dataset_name = 'ours_ckpt1_pexels-h_nocamera'
+# res_video_root_path = '/mnt/petrelfs/liuwenran/forks/pexels-human/output/20240607-1647--ckpt1-pexels-h-nocamera'
+# gt_video_root_path = pexels_h_gt_video_dir
+
+# dataset_name = 'ours_ckpt1_pexels-v_nocamera'
+# res_video_root_path = '/mnt/petrelfs/liuwenran/forks/pexels-human/output/20240607-1652--ckpt1-pexels-v-nocamera'
+# gt_video_root_path = pexels_v_gt_video_dir
+
+# dataset_name = 'ours_ckpt1_pexels-h_wcamera-regen'
+# res_video_root_path = '/mnt/petrelfs/liuwenran/forks/pexels-human/output/20240607-1947--ckpt1-pexels-h-wcamera-regen'
+# gt_video_root_path = pexels_h_gt_video_dir
+
+# dataset_name = 'ours_ckpt1_pexels-v_wcamera-regen'
+# res_video_root_path = '/mnt/petrelfs/liuwenran/forks/pexels-human/output/20240607-1948--ckpt1-pexels-v-wcamera-regen'
+# gt_video_root_path = pexels_v_gt_video_dir
+
+# dataset_name = 'ours_21k_dwpose1024_tiktok'
+# res_video_root_path = '/mnt/petrelfs/liuwenran/repos/HumanAnimation/output/20240611/tiktok_1732'
+# gt_video_root_path = tiktok_gt_video_dir
+
+# dataset_name = 'ours_21k_dwpose1024_pexels-h'
+# res_video_root_path = '/mnt/petrelfs/liuwenran/repos/HumanAnimation/output/20240612/pexels-h_1206'
+# gt_video_root_path = pexels_h_gt_video_dir
+
+# dataset_name = 'ours_21k_dwpose1024_pexels-v'
+# res_video_root_path = '/mnt/petrelfs/liuwenran/repos/HumanAnimation/output/20240611/pexels-v_1925'
+# gt_video_root_path = pexels_v_gt_video_dir
+
+# dataset_name = 'zhenzhi_test_all'
+# res_video_root_path = '/mnt/hwfile/landmark/wangzhenzhi/new_test/stage2-sense-evaluation-all/pexels-test-h_20240612_2253--seed_42-512x896'
+# gt_video_root_path = pexels_h_gt_video_dir
+
+# dataset_name = 'zhenzhi_test_all_pexels-v'
+# res_video_root_path = '/mnt/hwfile/landmark/wangzhenzhi/new_test/stage2-sense-evaluation-all/pexels-test-v_20240612_2213--seed_42-512x896'
+# gt_video_root_path = pexels_v_gt_video_dir
+
+# dataset_name = 'zhenzhi_test_real_pexels-h'
+# res_video_root_path = '/mnt/hwfile/landmark/wangzhenzhi/new_test/stage2-sense-evaluation-real/pexels-test-h_20240612_2253--seed_42-512x896'
+# gt_video_root_path = pexels_h_gt_video_dir
+
+dataset_name = 'zhenzhi_test_real_pexels-v'
+res_video_root_path = '/mnt/hwfile/landmark/wangzhenzhi/new_test/stage2-sense-evaluation-real/pexels-test-v_20240612_2213--seed_42-512x896'
+gt_video_root_path = pexels_v_gt_video_dir
 
 
 setting = 'sample-once'
@@ -86,7 +169,8 @@ result_all = []
 for ind, video_path in enumerate(all_videos):
     print(f'ind {ind} in {len(all_videos)}')
     res_video_reader = VideoReader(video_path)
-    vid = video_path.split('/')[-1].split('.')[0].split('_')[2]
+    # vid = video_path.split('/')[-1].split('.')[0].split('_')[2]
+    vid = video_path.split('/')[-1].split('.')[0].split('_')[1]
     gt_video_path = os.path.join(gt_video_root_path, f'{vid}.mp4')
     gt_video_reader = VideoReader(gt_video_path)
     evaluate_inds = list(range(0, len(gt_video_reader)))
