@@ -39,8 +39,8 @@ import math
 def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument("--config")
-    parser.add_argument("-W", type=int, default=512)
-    parser.add_argument("-H", type=int, default=912)
+    parser.add_argument("-W", type=int, default=576)
+    parser.add_argument("-H", type=int, default=1024)
     parser.add_argument("-L", type=int, default=24)
     parser.add_argument("--seed", type=int, default=1)
     parser.add_argument("--cfg", type=float, default=3.5)
@@ -209,15 +209,15 @@ def main():
     )
 
 
-    # image_enc = CLIPVisionModelWithProjection.from_pretrained(
-    #     'openai/clip-vit-large-patch14',
-    # ).to(dtype=weight_dtype, device="cuda")
+    image_enc = CLIPVisionModelWithProjection.from_pretrained(
+        'openai/clip-vit-large-patch14',
+    ).to(dtype=weight_dtype, device="cuda")
 
-    # image_enc_2 = CLIPVisionModelWithProjection.from_pretrained(
-    #     'laion/CLIP-ViT-bigG-14-laion2B-39B-b160k',
-    # ).to(dtype=weight_dtype, device="cuda")
-    image_enc = None
-    image_enc_2 = None
+    image_enc_2 = CLIPVisionModelWithProjection.from_pretrained(
+        'laion/CLIP-ViT-bigG-14-laion2B-39B-b160k',
+    ).to(dtype=weight_dtype, device="cuda")
+    # image_enc = None
+    # image_enc_2 = None
 
     # text_enc = CLIPTextModel.from_pretrained(
     #     'openai/clip-vit-large-patch14',
@@ -231,15 +231,15 @@ def main():
 
 
     # load pretrained weights
-    # denoising_unet.load_state_dict(
-    #     torch.load(config.denoising_unet_path, map_location="cpu"),
-    # )
-    # reference_unet.load_state_dict(
-    #     torch.load(config.reference_unet_path, map_location="cpu"),
-    # )
-    # pose_guider.load_state_dict(
-    #     torch.load(config.pose_guider_path, map_location="cpu"),
-    # )
+    denoising_unet.load_state_dict(
+        torch.load(config.denoising_unet_path, map_location="cpu"),
+    )
+    reference_unet.load_state_dict(
+        torch.load(config.reference_unet_path, map_location="cpu"),
+    )
+    pose_guider.load_state_dict(
+        torch.load(config.pose_guider_path, map_location="cpu"),
+    )
 
     trained_net = Net(
         reference_unet,
@@ -249,8 +249,8 @@ def main():
         None,
     )
 
-    trained_net_state_dict = load_file(config.ckpt_tuned_path)
-    trained_net.load_state_dict(trained_net_state_dict)
+    # trained_net_state_dict = load_file(config.ckpt_tuned_path)
+    # trained_net.load_state_dict(trained_net_state_dict)
 
     pipe = SDXLControl2ImagePipeline(
         vae=vae,
@@ -305,6 +305,22 @@ def main():
         f"{data_root_path}/inputs/pose/p6.jpg",
         f"{data_root_path}/inputs/pose/p7.jpg",
     ]
+    # ref_image_paths = [
+    #     # "/mnt/hwfile/mm_lol/liuwenran/test_and_eval/moore_test_case/redbook/redbook_pose_half_human_crop_pose/IMG_5388.jpg",
+    #     # "/mnt/hwfile/mm_lol/liuwenran/test_and_eval/moore_test_case/redbook/ref_imgs/20240523-144446.jpg"
+    #     "/mnt/hwfile/mm_lol/liuwenran/test_and_eval/moore_test_case/redbook/redbook_pose_half_human_crop/IMG_5389.JPG",
+    # ]
+    # pose_image_paths = [
+    #     "/mnt/hwfile/mm_lol/liuwenran/test_and_eval/moore_test_case/redbook/redbook_pose_half_human_crop_pose/IMG_5389.jpg",    
+    #     "/mnt/hwfile/mm_lol/liuwenran/test_and_eval/moore_test_case/redbook/redbook_pose_half_human_crop_pose/IMG_5391.jpg",    
+    #     "/mnt/hwfile/mm_lol/liuwenran/test_and_eval/moore_test_case/redbook/redbook_pose_half_human_crop_pose/IMG_5392.jpg",    
+    #     "/mnt/hwfile/mm_lol/liuwenran/test_and_eval/moore_test_case/redbook/redbook_pose_half_human_crop_pose/IMG_5393.jpg",    
+    #     "/mnt/hwfile/mm_lol/liuwenran/test_and_eval/moore_test_case/redbook/redbook_pose_half_human_crop_pose/IMG_5394.jpg",    
+    #     "/mnt/hwfile/mm_lol/liuwenran/test_and_eval/moore_test_case/redbook/redbook_pose_half_human_crop_pose/IMG_5395.jpg",    
+    #     "/mnt/hwfile/mm_lol/liuwenran/test_and_eval/moore_test_case/redbook/redbook_pose_half_human_crop_pose/IMG_5396.jpg",    
+    #     "/mnt/hwfile/mm_lol/liuwenran/test_and_eval/moore_test_case/redbook/redbook_pose_half_human_crop_pose/IMG_5397.jpg",    
+    #     "/mnt/hwfile/mm_lol/liuwenran/test_and_eval/moore_test_case/redbook/redbook_pose_half_human_crop_pose/IMG_5398.jpg",
+    # ]
 
     image_embeds = torch.load('results/prompt_embeds/prompt_embeds.pt', map_location='cpu')
     image_embeds = image_embeds.to(device='cuda', dtype=torch.float16)
@@ -317,6 +333,7 @@ def main():
             ref_name = ref_image_path.split("/")[-1].replace(".jpg", "")
             ref_image_pil = Image.open(ref_image_path).convert("RGB")
             pose_image_pil = Image.open(pose_image_path).convert("RGB") # 输入的pose
+            # pose_image_align = pose_image_pil
             pose_image_align = align_pose(ref_image_path, pose_image_path) # align后的pose
 
             # image0 = pipe(
@@ -335,7 +352,7 @@ def main():
                 width=width,
                 height=height,
                 num_inference_steps=20,
-                guidance_scale=3.5,
+                guidance_scale=6,
                 generator=generator,
                 image_embeds=image_embeds,
                 fusion_type=config.fusion_type,
@@ -358,8 +375,8 @@ def main():
             pose_image_pil = pose_image_pil.resize((w, h)) 
             pose_image_align = pose_image_align.resize((w,h))
             canvas.paste(ref_image_pil, (0, 0))
-            canvas.paste(pose_image_pil, (w, 0))
-            # canvas.paste(pose_image_align, (w * 2, 0))
+            # canvas.paste(pose_image_pil, (w, 0))
+            canvas.paste(pose_image_align, (w, 0))
             # canvas.paste(res_image_pil0, (w * 3, 0))
             canvas.paste(res_image_pil1, (w * 2, 0))
 

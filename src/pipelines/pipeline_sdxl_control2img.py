@@ -461,6 +461,7 @@ class SDXLControl2ImagePipeline(
         )
         ref_image_latents = self.vae.encode(ref_image_tensor).latent_dist.mean
         ref_image_latents = ref_image_latents * self.vae.config.scaling_factor  # (b, 4, h, w)
+        ref_image_latents = ref_image_latents.to(device=device, dtype=self.unet.dtype)
 
         # Prepare pose condition image
         pose_cond_tensor = self.cond_image_processor.preprocess(
@@ -537,6 +538,7 @@ class SDXLControl2ImagePipeline(
             reference_control_writer.clear()
 
         # Post-processing
+        latents = latents.to(device=device, dtype=self.vae.dtype)
         image = self.decode_latents(latents)  # (b, c, 1, h, w)
 
         # Convert to tensor

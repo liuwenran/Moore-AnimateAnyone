@@ -146,7 +146,7 @@ def log_validation(
     generator = torch.Generator(device=accelerator.device).manual_seed(42)
     # cast unet dtype
     vae = vae.to(dtype=torch.float32)
-    image_enc = image_enc.to(dtype=torch.float32)
+    # image_enc = image_enc.to(dtype=torch.float32)
 
     # pose_detector = DWposeDetector()
     # pose_detector.to(accelerator.device)
@@ -205,7 +205,7 @@ def log_validation(
         pil_images.append({"name": f"{ref_name}_{tgt_name}", "img": canvas})
 
     vae = vae.to(dtype=torch.float16)
-    image_enc = image_enc.to(dtype=torch.float16)
+    # image_enc = image_enc.to(dtype=torch.float16)
 
     del pipe
     torch.cuda.empty_cache()
