@@ -27,6 +27,7 @@ from datetime import datetime
 tiktok_gt_video_dir = '/mnt/hwfile/mm_lol/fangyq/share_data/tiktok_video'
 pexels_h_gt_video_dir = '/mnt/hwfile/mm_lol/liuwenran/pexels-test-case/pexels-test-h/videos'
 pexels_v_gt_video_dir = '/mnt/hwfile/mm_lol/liuwenran/pexels-test-case/pexels-test-v/videos'
+ubc_gt_video_dir = '/mnt/hwfile/mm_lol/liuwenran/nips24-eval-case/ubc-test-3s'
 
 # moore results
 # dataset_name = 'pexels-test-h'
@@ -143,10 +144,25 @@ pexels_v_gt_video_dir = '/mnt/hwfile/mm_lol/liuwenran/pexels-test-case/pexels-te
 # res_video_root_path = '/mnt/hwfile/landmark/wangzhenzhi/new_test/stage2-sense-evaluation-real/pexels-test-h_20240612_2253--seed_42-512x896'
 # gt_video_root_path = pexels_h_gt_video_dir
 
-dataset_name = 'zhenzhi_test_real_pexels-v'
-res_video_root_path = '/mnt/hwfile/landmark/wangzhenzhi/new_test/stage2-sense-evaluation-real/pexels-test-v_20240612_2213--seed_42-512x896'
-gt_video_root_path = pexels_v_gt_video_dir
+# dataset_name = 'zhenzhi_test_real_pexels-v'
+# res_video_root_path = '/mnt/hwfile/landmark/wangzhenzhi/new_test/stage2-sense-evaluation-real/pexels-test-v_20240612_2213--seed_42-512x896'
+# gt_video_root_path = pexels_v_gt_video_dir
 
+# dataset_name = 'champ_ubc'
+# res_video_root_path = '/mnt/hwfile/mm_lol/liuwenran/nips24-eval-case/algorithms_result_ubc_rebuttal/champ/ubc-2024-08-13T11-23-38'
+# gt_video_root_path = ubc_gt_video_dir
+
+# dataset_name = 'moore_ubc'
+# res_video_root_path = '/mnt/hwfile/mm_lol/liuwenran/nips24-eval-case/algorithms_result_ubc_rebuttal/moore/2043--ubc_test--seed_42-768x768'
+# gt_video_root_path = ubc_gt_video_dir
+
+# dataset_name = 'magic_animate_ubc'
+# res_video_root_path = '/mnt/hwfile/mm_lol/liuwenran/nips24-eval-case/algorithms_result_ubc_rebuttal/magic-animate/ubc--2024-08-13T12-00-40'
+# gt_video_root_path = ubc_gt_video_dir
+
+dataset_name = 'zhenzhi_ckpt1_ubc'
+res_video_root_path = '/mnt/petrelfs/liuwenran/forks/pexels-human/output/20240813-1456--ckpt1-ubc'
+gt_video_root_path = ubc_gt_video_dir
 
 setting = 'sample-once'
 
@@ -169,8 +185,8 @@ result_all = []
 for ind, video_path in enumerate(all_videos):
     print(f'ind {ind} in {len(all_videos)}')
     res_video_reader = VideoReader(video_path)
-    # vid = video_path.split('/')[-1].split('.')[0].split('_')[2]
-    vid = video_path.split('/')[-1].split('.')[0].split('_')[1]
+    vid = video_path.split('/')[-1].split('.')[0].split('_')[2]
+    # vid = video_path.split('/')[-1].split('.')[0].split('_')[1]
     gt_video_path = os.path.join(gt_video_root_path, f'{vid}.mp4')
     gt_video_reader = VideoReader(gt_video_path)
     evaluate_inds = list(range(0, len(gt_video_reader)))

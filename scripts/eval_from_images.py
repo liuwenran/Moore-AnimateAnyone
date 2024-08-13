@@ -17,6 +17,7 @@ from datetime import datetime
 tiktok_gt_video_dir = '/mnt/hwfile/mm_lol/fangyq/share_data/tiktok_video'
 pexels_h_gt_video_dir = '/mnt/hwfile/mm_lol/liuwenran/pexels-test-case/pexels-test-h/videos'
 pexels_v_gt_video_dir = '/mnt/hwfile/mm_lol/liuwenran/pexels-test-case/pexels-test-v/videos'
+ubc_gt_video_dir = '/mnt/hwfile/mm_lol/liuwenran/nips24-eval-case/ubc-test-3s'
 
 # moore result
 # dataset_name = 'pexels-test-h'
@@ -110,13 +111,29 @@ pexels_v_gt_video_dir = '/mnt/hwfile/mm_lol/liuwenran/pexels-test-case/pexels-te
 # res_video_root_path = '/mnt/petrelfs/liuwenran/repos/HumanAnimation/output/20240611/tiktok_1732'
 # gt_video_root_path = tiktok_gt_video_dir
 
-dataset_name = 'ours_21k_dwpose1024_pexels-h'
-res_video_root_path = '/mnt/petrelfs/liuwenran/repos/HumanAnimation/output/20240612/pexels-h_1206'
-gt_video_root_path = pexels_h_gt_video_dir
+# dataset_name = 'ours_21k_dwpose1024_pexels-h'
+# res_video_root_path = '/mnt/petrelfs/liuwenran/repos/HumanAnimation/output/20240612/pexels-h_1206'
+# gt_video_root_path = pexels_h_gt_video_dir
 
 # dataset_name = 'ours_21k_dwpose1024_pexels-v'
 # res_video_root_path = '/mnt/petrelfs/liuwenran/repos/HumanAnimation/output/20240611/pexels-v_1925'
 # gt_video_root_path = pexels_v_gt_video_dir
+
+# dataset_name = 'champ_ubc'
+# res_video_root_path = '/mnt/hwfile/mm_lol/liuwenran/nips24-eval-case/algorithms_result_ubc_rebuttal/champ/ubc-2024-08-13T11-23-38'
+# gt_video_root_path = ubc_gt_video_dir
+
+# dataset_name = 'moore_ubc'
+# res_video_root_path = '/mnt/hwfile/mm_lol/liuwenran/nips24-eval-case/algorithms_result_ubc_rebuttal/moore/2043--ubc_test--seed_42-768x768'
+# gt_video_root_path = ubc_gt_video_dir
+
+# dataset_name = 'magic_animate_ubc'
+# res_video_root_path = '/mnt/hwfile/mm_lol/liuwenran/nips24-eval-case/algorithms_result_ubc_rebuttal/magic-animate/ubc--2024-08-13T12-00-40'
+# gt_video_root_path = ubc_gt_video_dir
+
+dataset_name = 'zhenzhi_ckpt1_ubc'
+res_video_root_path = '/mnt/petrelfs/liuwenran/forks/pexels-human/output/20240813-1456--ckpt1-ubc'
+gt_video_root_path = ubc_gt_video_dir
 
 setting = 'sample-once'
 
